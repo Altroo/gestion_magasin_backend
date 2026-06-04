@@ -1,0 +1,96 @@
+# Production docker-compose configuration
+
+services:
+  redis:
+    image: redis:latest
+    container_name: gestion_magasin_redis
+    restart: always
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build: .
+    container_name: gestion_magasin_web
+    restart: always
+    command: daphne -b 0.0.0.0 -p 8000 gestion_magasin_backend.asgi:application
+    ports:
+      - "8006:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  db:
+    image: postgres:18
+    container_name: gestion_magasin_db
+    restart: always
+    command: postgres -c max_connections=200 -c shared_buffers=256MB
+    ports:
+      - "5437:5432"
+    expose:
+      - "5432"
+    env_file:
+      - .env
+    volumes:
+      - gestion_magasin_db_data:/var/lib/postgresql
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-postgres}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  celery:
+    build: .
+    container_name: gestion_magasin_celery
+    restart: always
+    command: celery -A gestion_magasin_backend worker --loglevel=info --concurrency=4 -E -P gevent
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    networks:
+      - backend
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+
+volumes:
+  gestion_magasin_db_data:
+  redis_data:
+
+networks:
+  backend:
+    driver: bridge
+

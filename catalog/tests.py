@@ -1,0 +1,118 @@
+from decimal import Decimal
+
+import pytest
+from django.contrib.auth import get_user_model
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from catalog.models import Category, Product
+from stock.models import StockBalance
+from store.models import Role, Store, StoreMembership
+
+pytestmark = pytest.mark.django_db
+
+User = get_user_model()
+
+
+def authenticated_client(user):
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
+
+
+def create_store_setup(role_code=Role.Codes.RESPONSABLE):
+    user = User.objects.create_user(email="catalog@example.com", password="securepass123")
+    role, _ = Role.objects.get_or_create(
+        code=role_code,
+        defaults={"name": role_code.title(), "rank": 1},
+    )
+    store = Store.objects.create(code="catalog-store", name="CATALOG STORE", is_active=True)
+    StoreMembership.objects.create(user=user, store=store, role=role)
+    category = Category.objects.create(code="catalog-family", name="Catalogue Famille")
+    return user, store, category
+
+
+def create_product(reference, name, category, counter_price="25.00", is_active=True):
+    return Product.objects.create(
+        reference=reference,
+        barcode=reference,
+        name=name,
+        category=category,
+        purchase_price=Decimal("10.00"),
+        counter_price=Decimal(counter_price),
+        default_stock_alert=Decimal("2.000"),
+        is_active=is_active,
+    )
+
+
+def test_product_list_filters_by_text_boolean_and_numeric_fields():
+    user, store, category = create_store_setup()
+    matching = create_product("ART-LOW", "Article stock bas", category, counter_price="18.00")
+    other = create_product("ART-HIGH", "Article reserve", category, counter_price="40.00", is_active=False)
+    StockBalance.objects.create(store=store, product=matching, quantity=Decimal("1.000"), min_stock=Decimal("2.000"))
+    StockBalance.objects.create(store=store, product=other, quantity=Decimal("12.000"), min_stock=Decimal("4.000"))
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/catalog/products/",
+        {
+            "store": store.pk,
+            "name__icontains": "stock",
+            "is_active": "true",
+            "counter_price__lt": "20",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == matching.pk
+
+
+def test_product_list_accepts_comma_separated_boolean_filters():
+    user, store, category = create_store_setup()
+    active = create_product("ART-ACTIVE", "Article actif", category, is_active=True)
+    inactive = create_product("ART-INACTIVE", "Article inactif", category, is_active=False)
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/catalog/products/",
+        {
+            "store": store.pk,
+            "is_active": "true,false",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert {item["id"] for item in response.data["results"]} == {active.pk, inactive.pk}
+
+
+def test_product_bulk_delete_requires_store_management_role():
+    user, store, category = create_store_setup(role_code=Role.Codes.LECTURE)
+    product = create_product("ART-DELETE", "Article delete", category)
+    client = authenticated_client(user)
+
+    response = client.delete(
+        "/api/catalog/products/bulk-delete/",
+        {"ids": [product.pk]},
+        format="json",
+        QUERY_STRING=f"store={store.pk}",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert Product.objects.filter(pk=product.pk).exists()
+
+
+def test_product_bulk_delete_removes_selected_products_for_responsable():
+    user, store, category = create_store_setup()
+    product = create_product("ART-BULK", "Article bulk", category)
+    client = authenticated_client(user)
+
+    response = client.delete(
+        "/api/catalog/products/bulk-delete/",
+        {"ids": [product.pk]},
+        format="json",
+        QUERY_STRING=f"store={store.pk}",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert not Product.objects.filter(pk=product.pk).exists()

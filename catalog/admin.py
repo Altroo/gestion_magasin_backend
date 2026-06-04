@@ -1,0 +1,35 @@
+from django.contrib import admin
+from simple_history.admin import SimpleHistoryAdmin
+
+from catalog.models import Category, Product, ProductImportBatch
+
+
+@admin.register(Category)
+class CategoryAdmin(SimpleHistoryAdmin):
+    list_display = ("code", "name", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("code", "name")
+
+
+@admin.register(Product)
+class ProductAdmin(SimpleHistoryAdmin):
+    list_display = (
+        "reference",
+        "barcode",
+        "name",
+        "category",
+        "counter_price",
+        "default_stock_alert",
+        "is_active",
+    )
+    list_filter = ("category", "is_active", "compliance_required")
+    search_fields = ("reference", "barcode", "name")
+
+
+@admin.register(ProductImportBatch)
+class ProductImportBatchAdmin(admin.ModelAdmin):
+    list_display = ("file_name", "store", "imported_count", "skipped_count", "date_created")
+    list_filter = ("store",)
+    search_fields = ("file_name",)
+    readonly_fields = ("date_created",)
+
