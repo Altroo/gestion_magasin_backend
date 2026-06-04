@@ -222,6 +222,16 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_MAX_EMAIL_ADDRESSES = 1
 ACCOUNT_DEFAULT_HTTP_PROTOCOL = config("ACCOUNT_DEFAULT_HTTP_PROTOCOL", default="https")
 
+EBH_SSO_APP_SLUG = config("EBH_SSO_APP_SLUG", default="gestion_magasin")
+EBH_SSO_VERIFY_URL = config(
+    "EBH_SSO_VERIFY_URL",
+    default="http://localhost:8004/api/account/sso/verify/",
+)
+EBH_SSO_SHARED_SECRET = config(
+    "EBH_SSO_SHARED_SECRET",
+    default="development-ebh-sso-secret" if DEBUG else "",
+)
+
 EMAIL_BACKEND = config(
     "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
 )

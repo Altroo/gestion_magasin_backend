@@ -135,6 +135,48 @@ class TestAccountAPI:
         )
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
+    def test_sso_credential_check_validates_shared_secret_and_password(self, settings):
+        settings.EBH_SSO_SHARED_SECRET = "shared-sso-secret"
+        self.user.first_name = "Service"
+        self.user.last_name = "IT"
+        self.user.save(update_fields=["first_name", "last_name"])
+
+        resp = self.client.post(
+            reverse("account:sso-check-credentials"),
+            {
+                "service_secret": "shared-sso-secret",
+                "email": self.user.email,
+                "password": "securepass123",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["valid"] is True
+        assert resp.data["user"]["email"] == self.user.email
+
+    def test_sso_exchange_links_user_and_returns_tokens(self):
+        claims = {
+            "user": {
+                "sub": "central-user-1",
+                "email": self.user.email,
+                "first_name": "Service",
+                "last_name": "IT",
+            }
+        }
+
+        with patch("account.sso.SSOExchangeView._verify_code", return_value=claims):
+            resp = self.client.post(
+                reverse("account:sso-exchange"), {"code": "code-123"}, format="json"
+            )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert "access" in resp.data
+        assert "refresh" in resp.data
+        self.user.refresh_from_db()
+        assert self.user.sso_subject == "central-user-1"
+        assert self.user.first_name == "Service"
+
     def test_logout(self):
         url = reverse("account:logout")
         resp = self.auth_client.post(url)
