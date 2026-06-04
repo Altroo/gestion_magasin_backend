@@ -118,6 +118,16 @@ class StoreDashboardReportView(APIView):
             .annotate(total=Sum("total"), count=Count("id"))
             .order_by("day")
         )
+        purchases_trend = (
+            purchases.values("purchase_date")
+            .annotate(total=Sum("subtotal"), count=Count("id"))
+            .order_by("purchase_date")
+        )
+        expenses_trend = (
+            expenses.values("expense_date")
+            .annotate(total=Sum("amount"), count=Count("id"))
+            .order_by("expense_date")
+        )
         attendance_trend = (
             attendance.values("date")
             .annotate(hours=Sum("hours_worked"), delay=Sum("delay_minutes"))
@@ -135,6 +145,29 @@ class StoreDashboardReportView(APIView):
             transfers = transfers.filter(
                 Q(source_store_id__in=store_ids) | Q(target_store_id__in=store_ids)
             )
+        inventories = InventorySession.objects.filter(
+            inventory_date__gte=date_from,
+            inventory_date__lte=date_to,
+        )
+        inventories = _apply_store_filter(inventories, store_ids)
+        promotions = Promotion.objects.filter(
+            date_created__date__gte=date_from,
+            date_created__date__lte=date_to,
+        )
+        promotions = _apply_store_filter(promotions, store_ids)
+        balances = list(
+            _apply_store_filter(
+                StockBalance.objects.select_related("product", "store"),
+                store_ids,
+            )
+        )
+        stock_by_store_map = {}
+        low_stock_by_store_map = {}
+        for balance in balances:
+            store_name = balance.store.name
+            stock_by_store_map[store_name] = stock_by_store_map.get(store_name, 0) + balance.quantity
+            if balance.is_low_stock:
+                low_stock_by_store_map[store_name] = low_stock_by_store_map.get(store_name, 0) + 1
 
         return Response(
             {
@@ -167,9 +200,37 @@ class StoreDashboardReportView(APIView):
                     {"date": item["day"], "total": item["total"] or 0, "count": item["count"]}
                     for item in sales_trend
                 ],
+                "purchases_trend": [
+                    {"date": item["purchase_date"], "total": item["total"] or 0, "count": item["count"]}
+                    for item in purchases_trend
+                ],
+                "expenses_trend": [
+                    {"date": item["expense_date"], "total": item["total"] or 0, "count": item["count"]}
+                    for item in expenses_trend
+                ],
                 "attendance_trend": [
                     {"date": item["date"], "hours": item["hours"] or 0, "delay": item["delay"] or 0}
                     for item in attendance_trend
+                ],
+                "stock_by_store": [
+                    {"store": store, "quantity": quantity}
+                    for store, quantity in sorted(stock_by_store_map.items(), key=lambda item: item[0])[:12]
+                ],
+                "low_stock_by_store": [
+                    {"store": store, "count": count}
+                    for store, count in sorted(low_stock_by_store_map.items(), key=lambda item: item[1], reverse=True)[:12]
+                ],
+                "transfers_by_status": [
+                    {"status": item["status"], "count": item["count"]}
+                    for item in transfers.values("status").annotate(count=Count("id")).order_by("status")
+                ],
+                "inventory_by_status": [
+                    {"status": item["status"], "count": item["count"]}
+                    for item in inventories.values("status").annotate(count=Count("id")).order_by("status")
+                ],
+                "promotions_by_status": [
+                    {"status": item["status"], "count": item["count"]}
+                    for item in promotions.values("status").annotate(count=Count("id")).order_by("status")
                 ],
                 "stock_alerts": [
                     {
@@ -321,7 +382,9 @@ def _pdf_response(kind, headers, rows):
     story = [Paragraph(f"E.B.H Gestion Magasin - {kind}", styles["Title"]), Spacer(1, 12), table]
     doc.build(story)
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="{kind}.pdf"'
+    filename = f"{kind}.pdf"
+    response["Content-Disposition"] = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{filename}"
+    response["X-Content-Type-Options"] = "nosniff"
     return response
 
 

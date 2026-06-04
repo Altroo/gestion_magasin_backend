@@ -584,9 +584,9 @@ class PurchaseListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
-        store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         serializer = PurchaseCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
         purchase = _create_purchase_from_validated_data(
             store=store,
             user=request.user,
@@ -604,15 +604,16 @@ class PurchaseDetailEditDeleteView(APIView):
     def put(self, request, pk, *args, **kwargs):
         purchase = _get_purchase_for_user(request, pk)
         _ensure_store_management_access(request.user, purchase.store_id)
-        _ensure_global_stock_store(purchase.store)
         if purchase.status == Purchase.Statuses.RECEIVED:
             raise ValidationError({"status": ["Un achat réceptionné ne peut plus être modifié."]})
         serializer = PurchaseCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
+            next_store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
             purchase.lines.all().delete()
             data = dict(serializer.validated_data)
             lines_data = data.pop("lines")
+            purchase.store = next_store
             purchase.supplier_name = data.get("supplier_name", "")
             purchase.reference = data.get("reference", "")
             purchase.purchase_date = data.get("purchase_date") or purchase.purchase_date
@@ -639,7 +640,6 @@ class PurchaseDetailEditDeleteView(APIView):
     def delete(self, request, pk, *args, **kwargs):
         purchase = _get_purchase_for_user(request, pk)
         _ensure_store_management_access(request.user, purchase.store_id)
-        _ensure_global_stock_store(purchase.store)
         if purchase.status == Purchase.Statuses.RECEIVED:
             raise ValidationError({"status": ["Un achat réceptionné ne peut pas être supprimé."]})
         purchase.delete()
@@ -653,7 +653,6 @@ class PurchaseReceiveView(APIView):
     def post(request, pk, *args, **kwargs):
         purchase = _get_purchase_for_user(request, pk)
         _ensure_store_management_access(request.user, purchase.store_id)
-        _ensure_global_stock_store(purchase.store)
         purchase = receive_purchase(purchase=purchase, user=request.user)
         return Response(PurchaseSerializer(purchase).data, status=status.HTTP_200_OK)
 

@@ -161,8 +161,6 @@ def validate_stock_transfer(*, transfer: StockTransfer, user=None) -> StockTrans
 
 @transaction.atomic
 def receive_purchase(*, purchase: Purchase, user=None) -> Purchase:
-    if not purchase.store.is_global_stock:
-        raise ValidationError({"store": ["Les achats doivent être réceptionnés dans MBR Stock."]})
     if purchase.status == Purchase.Statuses.RECEIVED:
         raise ValidationError({"status": ["Cet achat est déjà réceptionné."]})
     if purchase.status == Purchase.Statuses.CANCELLED:

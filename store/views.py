@@ -21,7 +21,7 @@ from store.serializers import (
 def _filtered_stores_for_user(request):
     queryset = Store.objects.annotate(members_count=Count("memberships")).order_by(
         "name"
-    )
+    ).exclude(Q(is_global_stock=True) | Q(code="mbr-south"))
     if not request.user.is_staff:
         queryset = queryset.filter(id__in=user_store_ids(request.user))
 

@@ -28,10 +28,10 @@ class Command(BaseCommand):
             self._mbr_stock(stores["mbr_stock"], products)
             self._payment_modes()
             self._transfers(stores, products, users["admin"])
-            self._promotions(stores["mbr_south"], products, users["seller"])
-            self._sales(stores["mbr_south"], products, users["seller"])
-            self._attendance(stores["mbr_south"])
-            self._expenses(stores["mbr_south"])
+            self._promotions(stores["casablanca"], products, users["seller"])
+            self._sales(stores["casablanca"], products, users["seller"])
+            self._attendance(stores["casablanca"])
+            self._expenses(stores["casablanca"])
         self.stdout.write(self.style.SUCCESS("Gestion Magasin demo data is ready."))
 
     def _roles(self):
@@ -59,10 +59,10 @@ class Command(BaseCommand):
                 "is_global_stock": True,
             },
         )
-        mbr_south, _ = Store.objects.update_or_create(
-            code="mbr-south",
+        casablanca, _ = Store.objects.update_or_create(
+            code="magasin-casablanca",
             defaults={
-                "name": "MBR SOUTH",
+                "name": "Magasin Casablanca",
                 "address": "Casablanca",
                 "phone": "0522000000",
                 "is_active": True,
@@ -79,7 +79,7 @@ class Command(BaseCommand):
                 "is_global_stock": False,
             },
         )
-        return {"mbr_stock": mbr_stock, "mbr_south": mbr_south, "mbr_demo": mbr_demo}
+        return {"mbr_stock": mbr_stock, "casablanca": casablanca, "mbr_demo": mbr_demo}
 
     def _users(self, roles, stores):
         User = get_user_model()
@@ -125,7 +125,7 @@ class Command(BaseCommand):
             )
         StoreMembership.objects.update_or_create(
             user=seller,
-            store=stores["mbr_south"],
+            store=stores["casablanca"],
             defaults={"role": roles[Role.Codes.RESPONSABLE], "is_active": True},
         )
         return {"admin": admin, "seller": seller}
@@ -193,7 +193,7 @@ class Command(BaseCommand):
             return
         transfer = StockTransfer.objects.create(
             source_store=stores["mbr_stock"],
-            target_store=stores["mbr_south"],
+            target_store=stores["casablanca"],
             reference="DEMO-TR-001",
             transfer_date=timezone.localdate(),
             status=StockTransfer.Statuses.DRAFT,
@@ -217,7 +217,7 @@ class Command(BaseCommand):
             "DEMO-SODA": "10.000",
         }.items():
             StockBalance.objects.filter(
-                store=stores["mbr_south"],
+                store=stores["casablanca"],
                 product=products[reference],
             ).update(min_stock=Decimal(min_stock))
 
