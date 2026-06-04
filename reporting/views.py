@@ -4,7 +4,7 @@ from io import BytesIO
 
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -381,9 +381,9 @@ def _pdf_response(kind, headers, rows):
     )
     story = [Paragraph(f"E.B.H Gestion Magasin - {kind}", styles["Title"]), Spacer(1, 12), table]
     doc.build(story)
-    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     filename = f"{kind}.pdf"
-    response["Content-Disposition"] = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{filename}"
+    buffer.seek(0)
+    response = FileResponse(buffer, as_attachment=False, filename=filename, content_type="application/pdf")
     response["X-Content-Type-Options"] = "nosniff"
     return response
 

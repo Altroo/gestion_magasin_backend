@@ -93,3 +93,17 @@ def test_stock_export_csv_returns_file_response():
     assert response.status_code == status.HTTP_200_OK
     assert response["Content-Type"].startswith("text/csv")
     assert "attachment" in response["Content-Disposition"]
+
+
+def test_stock_export_pdf_opens_inline_with_pdf_filename():
+    pytest.importorskip("reportlab")
+
+    user, store, _product = create_store_setup()
+    client = authenticated_client(user)
+
+    response = client.get("/api/reports/export/stock/", {"store": store.pk, "format": "pdf"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response["Content-Type"].startswith("application/pdf")
+    assert "inline" in response["Content-Disposition"]
+    assert 'filename="stock.pdf"' in response["Content-Disposition"]
