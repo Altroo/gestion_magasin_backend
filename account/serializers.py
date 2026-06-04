@@ -198,6 +198,7 @@ class CreateAccountSerializer(serializers.ModelSerializer):
             "can_create",
             "can_edit",
             "can_delete",
+            "can_create_promotion",
             "stores",
         ]
         extra_kwargs = {
@@ -296,6 +297,7 @@ class ProfileGETSerializer(serializers.ModelSerializer):
             "can_create",
             "can_edit",
             "can_delete",
+            "can_create_promotion",
         ]
 
 
@@ -514,6 +516,7 @@ class UsersListSerializer(serializers.ModelSerializer):
             "can_create",
             "can_edit",
             "can_delete",
+            "can_create_promotion",
             "stores",
         ]
         read_only_fields = ("date_joined", "date_updated", "last_login")
@@ -555,6 +558,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             "can_create",
             "can_edit",
             "can_delete",
+            "can_create_promotion",
             "stores",
         ]
         read_only_fields = ("id", "date_joined", "date_updated", "last_login")
@@ -579,6 +583,7 @@ class UserPatchSerializer(ProfilePutSerializer):
             "can_create",
             "can_edit",
             "can_delete",
+            "can_create_promotion",
             "stores",
         ]
         read_only_fields = ("id", "email", "date_joined", "last_login")

@@ -42,6 +42,12 @@ class Store(models.Model):
         max_length=40, blank=True, default="", verbose_name=_("Téléphone")
     )
     is_active = models.BooleanField(default=True, db_index=True, verbose_name=_("Actif"))
+    is_global_stock = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name=_("Stock MBR"),
+        help_text=_("Magasin source utilisé pour distribuer le stock aux magasins."),
+    )
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
     history = HistoricalRecords()
@@ -91,4 +97,3 @@ class StoreMembership(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} - {self.store} ({self.role})"
-

@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from catalog.models import Category, Product
 from notification.models import Notification
 from notification.tasks import notify_low_stock_if_needed
-from sales.models import PaymentMode, Sale, SaleLine
+from sales.models import PaymentMode, Promotion, PromotionLine, Sale, SaleLine, SalePromotionLine
 from stock.models import StockBalance, StockMovement
 from store.models import Role, Store, StoreMembership
 
@@ -88,6 +88,66 @@ def test_confirm_sale_reduces_stock_and_creates_audit_rows():
         quantity=Decimal("-1.000"),
         source_id=sale.pk,
     ).exists()
+
+
+def test_confirm_promotion_sale_reduces_component_stock():
+    user = create_user("promo-seller@example.com")
+    store, product = create_store_setup(user)
+    category = product.category
+    second_product = Product.objects.create(
+        reference="ART-002",
+        barcode="ART-002",
+        name="Article promotion",
+        category=category,
+        purchase_price=Decimal("8.00"),
+        counter_price=Decimal("18.00"),
+        default_stock_alert=Decimal("2.000"),
+    )
+    StockBalance.objects.create(
+        store=store,
+        product=second_product,
+        quantity=Decimal("5.000"),
+        min_stock=Decimal("1.000"),
+        average_cost=Decimal("8.00"),
+    )
+    promotion = Promotion.objects.create(
+        store=store,
+        name="Pack test",
+        selling_price=Decimal("40.00"),
+        status=Promotion.Statuses.ACTIVE,
+        created_by=user,
+    )
+    PromotionLine.objects.create(
+        promotion=promotion,
+        product=product,
+        quantity=Decimal("2.000"),
+    )
+    PromotionLine.objects.create(
+        promotion=promotion,
+        product=second_product,
+        quantity=Decimal("1.000"),
+    )
+    client = authenticated_client(user)
+
+    response = client.post(
+        "/api/sales/",
+        {
+            "store": store.pk,
+            "payment_mode_code": "cash",
+            "promotion_lines": [
+                {"promotion": promotion.pk, "quantity": "1", "unit_price": "40.00"}
+            ],
+            "idempotency_key": "sale-promo-001",
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    sale = Sale.objects.get(id=response.data["id"])
+    assert sale.total == Decimal("40.00")
+    assert SalePromotionLine.objects.filter(sale=sale, promotion=promotion).exists()
+    assert StockBalance.objects.get(store=store, product=product).quantity == Decimal("1.000")
+    assert StockBalance.objects.get(store=store, product=second_product).quantity == Decimal("4.000")
 
 
 def test_low_stock_task_notifies_store_managers():

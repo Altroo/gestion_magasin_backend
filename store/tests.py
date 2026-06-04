@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from store.models import Store
+from store.models import Role, Store, StoreMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -45,6 +45,31 @@ class TestStoreAPI:
 
         assert response.status_code == status.HTTP_201_CREATED
         assert Store.objects.filter(code="MBR_TEST").exists()
+
+    def test_staff_can_create_store_with_assigned_users(self):
+        user = make_user("store-owner@example.com", is_staff=True)
+        member = make_user("store-member@example.com")
+        role, _ = Role.objects.get_or_create(
+            code=Role.Codes.RESPONSABLE,
+            defaults={"name": "Responsable", "rank": 2},
+        )
+        client = authenticated_client(user)
+
+        response = client.post(
+            reverse("stores-list"),
+            {
+                "name": "MBR ASSIGNED",
+                "code": "MBR_ASSIGNED",
+                "managed_by": [{"pk": member.pk, "role": role.code}],
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        store = Store.objects.get(code="MBR_ASSIGNED")
+        membership = StoreMembership.objects.get(user=member, store=store)
+        assert membership.role == role
+        assert response.data["managed_by"][0]["pk"] == member.pk
 
     def test_regular_user_cannot_create_store(self):
         user = make_user("store-user@example.com")

@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 from django.core.exceptions import PermissionDenied
+from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions
 
 from store.models import Role, Store, StoreMembership
@@ -87,7 +88,31 @@ def get_store_from_request(request, roles: Iterable[str] | None = None) -> Store
     return store
 
 
+def get_global_stock_store_from_request(
+    request,
+    roles: Iterable[str] | None = None,
+) -> Store:
+    raw_store_id = (
+        request.query_params.get("store")
+        or request.query_params.get("store_id")
+        or request.data.get("store")
+        or request.data.get("store_id")
+    )
+
+    if raw_store_id:
+        store = get_store_from_request(request, roles=roles)
+        if not store.is_global_stock:
+            raise PermissionDenied(_("Les entrées de stock doivent utiliser MBR Stock."))
+        return store
+
+    store = Store.objects.filter(is_global_stock=True, is_active=True).first()
+    if not store:
+        raise PermissionDenied(_("Le stock MBR n'est pas configuré."))
+    if not user_has_store_access(request.user, store.pk, roles=roles):
+        raise PermissionDenied(_("Vous n'avez pas accès au stock MBR."))
+    return store
+
+
 class StoreAccessPermission(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated)
-

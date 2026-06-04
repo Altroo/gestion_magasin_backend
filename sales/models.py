@@ -37,6 +37,7 @@ class PaymentMode(models.Model):
     name = models.CharField(max_length=80, unique=True, verbose_name=_("Nom"))
     is_credit = models.BooleanField(default=False, verbose_name=_("Crédit client"))
     is_active = models.BooleanField(default=True, db_index=True, verbose_name=_("Actif"))
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = _("Mode de paiement")
@@ -45,6 +46,88 @@ class PaymentMode(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Promotion(models.Model):
+    class Statuses(models.TextChoices):
+        ACTIVE = "active", _("Active")
+        EXPIRED = "expired", _("Expirée")
+
+    store = models.ForeignKey(
+        "store.Store",
+        on_delete=models.PROTECT,
+        related_name="promotions",
+        verbose_name=_("Magasin"),
+    )
+    name = models.CharField(max_length=160, verbose_name=_("Nom"))
+    selling_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name=_("Prix de vente"),
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Statuses.choices,
+        default=Statuses.ACTIVE,
+        db_index=True,
+        verbose_name=_("Statut"),
+    )
+    start_date = models.DateField(null=True, blank=True, verbose_name=_("Date début"))
+    end_date = models.DateField(null=True, blank=True, verbose_name=_("Date fin"))
+    note = models.TextField(blank=True, default="", verbose_name=_("Note"))
+    created_by = models.ForeignKey(
+        "accounts.CustomUser",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promotions_created",
+        verbose_name=_("Créé par"),
+    )
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = _("Promotion")
+        verbose_name_plural = _("Promotions")
+        ordering = ("-date_created", "name")
+
+    def __str__(self) -> str:
+        return f"{self.name} - {self.store}"
+
+
+class PromotionLine(models.Model):
+    promotion = models.ForeignKey(
+        Promotion,
+        on_delete=models.CASCADE,
+        related_name="lines",
+        verbose_name=_("Promotion"),
+    )
+    product = models.ForeignKey(
+        "catalog.Product",
+        on_delete=models.PROTECT,
+        related_name="promotion_lines",
+        verbose_name=_("Article"),
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        verbose_name=_("Quantité"),
+    )
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = _("Ligne promotion")
+        verbose_name_plural = _("Lignes promotions")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("promotion", "product"),
+                name="unique_promotion_product",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product} x {self.quantity}"
 
 
 class Sale(models.Model):
@@ -156,6 +239,7 @@ class SaleLine(models.Model):
     unit_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name=_("Prix unitaire"))
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = _("Ligne vente")
@@ -168,6 +252,44 @@ class SaleLine(models.Model):
 
     def __str__(self) -> str:
         return f"{self.product} x {self.quantity}"
+
+
+class SalePromotionLine(models.Model):
+    sale = models.ForeignKey(
+        Sale,
+        on_delete=models.CASCADE,
+        related_name="promotion_lines",
+        verbose_name=_("Vente"),
+    )
+    promotion = models.ForeignKey(
+        Promotion,
+        on_delete=models.PROTECT,
+        related_name="sale_lines",
+        verbose_name=_("Promotion"),
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        verbose_name=_("Quantité"),
+    )
+    unit_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name=_("Prix unitaire"),
+    )
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = _("Ligne vente promotion")
+        verbose_name_plural = _("Lignes ventes promotions")
+
+    def save(self, *args, **kwargs):
+        self.total = (self.quantity or Decimal("0")) * (self.unit_price or Decimal("0"))
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.promotion} x {self.quantity}"
 
 
 class CustomerCreditLedger(models.Model):
@@ -195,9 +317,9 @@ class CustomerCreditLedger(models.Model):
         related_name="customer_credit_entries",
     )
     date_created = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = _("Journal crédit client")
         verbose_name_plural = _("Journal crédits clients")
         ordering = ("-date_created",)
-

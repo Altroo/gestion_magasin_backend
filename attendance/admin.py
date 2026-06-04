@@ -19,9 +19,8 @@ class AttendanceRecordAdmin(SimpleHistoryAdmin):
 
 
 @admin.register(AttendanceImportBatch)
-class AttendanceImportBatchAdmin(admin.ModelAdmin):
+class AttendanceImportBatchAdmin(SimpleHistoryAdmin):
     list_display = ("file_name", "store", "responsible", "imported_count", "skipped_count", "date_created")
     list_filter = ("store", "date_created")
     search_fields = ("file_name", "responsible")
     readonly_fields = ("date_created",)
-

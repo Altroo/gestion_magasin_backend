@@ -95,4 +95,3 @@ class ProductImportBatchSerializer(serializers.ModelSerializer):
             "skipped_count",
             "date_created",
         ]
-

@@ -4,8 +4,15 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from sales.models import Customer, CustomerCreditLedger, PaymentMode, Sale, SaleLine
-from sales.serializers import resolve_product
+from sales.models import (
+    Customer,
+    CustomerCreditLedger,
+    PaymentMode,
+    Sale,
+    SaleLine,
+    SalePromotionLine,
+)
+from sales.serializers import resolve_product, resolve_promotion
 from stock.services import apply_return_stock, apply_sale_stock
 
 
@@ -35,7 +42,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
         existing = Sale.objects.filter(
             store=store,
             idempotency_key=idempotency_key,
-        ).prefetch_related("lines").first()
+        ).prefetch_related("lines", "promotion_lines").first()
         if existing:
             return existing
 
@@ -48,8 +55,10 @@ def create_sale(*, store, user, validated_data) -> Sale:
             raise ValidationError({"customer": ["Client introuvable pour ce magasin."]})
 
     payment_mode = _payment_mode(validated_data)
-    lines_payload = validated_data["lines"]
+    lines_payload = validated_data.get("lines") or []
+    promotion_lines_payload = validated_data.get("promotion_lines") or []
     prepared_lines = []
+    prepared_promotion_lines = []
     subtotal = Decimal("0")
     for item in lines_payload:
         product = resolve_product(item["product"])
@@ -60,6 +69,24 @@ def create_sale(*, store, user, validated_data) -> Sale:
         prepared_lines.append(
             {
                 "product": product,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "total": line_total,
+            }
+        )
+    for item in promotion_lines_payload:
+        promotion = resolve_promotion(item["promotion"])
+        if promotion.store_id != store.pk:
+            raise ValidationError({"promotion": ["Promotion introuvable pour ce magasin."]})
+        if not promotion.lines.exists():
+            raise ValidationError({"promotion": ["Promotion sans articles."]})
+        quantity = _decimal(item["quantity"])
+        unit_price = _decimal(item.get("unit_price") or promotion.selling_price)
+        line_total = quantity * unit_price
+        subtotal += line_total
+        prepared_promotion_lines.append(
+            {
+                "promotion": promotion,
                 "quantity": quantity,
                 "unit_price": unit_price,
                 "total": line_total,
@@ -98,6 +125,16 @@ def create_sale(*, store, user, validated_data) -> Sale:
             user=user,
             source_id=sale.pk,
         )
+    for item in prepared_promotion_lines:
+        SalePromotionLine.objects.create(sale=sale, **item)
+        for component in item["promotion"].lines.select_related("product"):
+            apply_sale_stock(
+                store=store,
+                product=component.product,
+                quantity=component.quantity * item["quantity"],
+                user=user,
+                source_id=sale.pk,
+            )
 
     if customer and payment_status == Sale.PaymentStatuses.CREDIT:
         CustomerCreditLedger.objects.create(
@@ -128,5 +165,16 @@ def void_sale(*, sale: Sale, user, reason: str = "") -> Sale:
             user=user,
             source_id=sale.pk,
         )
+    for line in sale.promotion_lines.select_related("promotion").prefetch_related(
+        "promotion__lines",
+        "promotion__lines__product",
+    ):
+        for component in line.promotion.lines.all():
+            apply_return_stock(
+                store=sale.store,
+                product=component.product,
+                quantity=component.quantity * line.quantity,
+                user=user,
+                source_id=sale.pk,
+            )
     return sale
-

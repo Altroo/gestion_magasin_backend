@@ -1,12 +1,27 @@
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
-from catalog.views import CategoryViewSet, ProductImportBatchViewSet, ProductViewSet
+from catalog.views import (
+    BulkDeleteProductsView,
+    CategoryDetailEditDeleteView,
+    CategoryListCreateView,
+    ProductDetailEditDeleteView,
+    ProductImportBatchDetailView,
+    ProductImportBatchListView,
+    ProductImportWorkbookView,
+    ProductListCreateView,
+    ProductScanView,
+)
 
-router = DefaultRouter()
-router.register("categories", CategoryViewSet, basename="categories")
-router.register("imports", ProductImportBatchViewSet, basename="product-imports")
-router.register("products", ProductViewSet, basename="products")
+app_name = "catalog"
 
-urlpatterns = [path("", include(router.urls))]
-
+urlpatterns = [
+    path("categories/", CategoryListCreateView.as_view(), name="categories-list-create"),
+    path("categories/<int:pk>/", CategoryDetailEditDeleteView.as_view(), name="categories-detail"),
+    path("imports/", ProductImportBatchListView.as_view(), name="product-imports-list"),
+    path("imports/<int:pk>/", ProductImportBatchDetailView.as_view(), name="product-imports-detail"),
+    path("products/", ProductListCreateView.as_view(), name="products-list-create"),
+    path("products/scan/", ProductScanView.as_view(), name="products-scan"),
+    path("products/import-workbook/", ProductImportWorkbookView.as_view(), name="products-import-workbook"),
+    path("products/bulk-delete/", BulkDeleteProductsView.as_view(), name="products-bulk-delete"),
+    path("products/<int:pk>/", ProductDetailEditDeleteView.as_view(), name="products-detail"),
+]

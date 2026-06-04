@@ -11,6 +11,7 @@ from store.models import Role, Store, StoreMembership
 from store.permissions import user_store_ids
 from store.serializers import (
     RoleSerializer,
+    StoreDetailSerializer,
     StoreMembershipSerializer,
     StoreSerializer,
     UserStoreSerializer,
@@ -69,10 +70,13 @@ class StoreListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
-        serializer = StoreSerializer(data=request.data)
+        serializer = StoreDetailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         store = serializer.save()
-        return Response(StoreSerializer(store).data, status=status.HTTP_201_CREATED)
+        return Response(
+            StoreDetailSerializer(store).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class StoreDetailEditDeleteView(APIView):
@@ -90,25 +94,30 @@ class StoreDetailEditDeleteView(APIView):
             raise Http404(_("Aucun magasin ne correspond à la requête."))
 
     def get(self, request, pk, *args, **kwargs):
-        serializer = StoreSerializer(self.get_object(pk))
+        serializer = StoreDetailSerializer(self.get_object(pk))
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, *args, **kwargs):
         store = self.get_object(pk)
-        serializer = StoreSerializer(store, data=request.data)
+        serializer = StoreDetailSerializer(store, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk, *args, **kwargs):
         store = self.get_object(pk)
-        serializer = StoreSerializer(store, data=request.data, partial=True)
+        serializer = StoreDetailSerializer(store, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, *args, **kwargs):
-        self.get_object(pk).delete()
+        store = self.get_object(pk)
+        if store.is_global_stock:
+            raise ValidationError(
+                {"store": _("Le stock MBR ne peut pas être supprimé.")}
+            )
+        store.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -126,7 +135,10 @@ class BulkDeleteStoresView(APIView):
         except (TypeError, ValueError):
             raise ValidationError({"ids": _("Les identifiants doivent être entiers.")})
 
-        deleted, _deleted_breakdown = Store.objects.filter(pk__in=ids).delete()
+        deleted, _deleted_breakdown = Store.objects.filter(
+            pk__in=ids,
+            is_global_stock=False,
+        ).delete()
         return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
 

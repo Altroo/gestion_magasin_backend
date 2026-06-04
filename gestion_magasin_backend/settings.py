@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "stock.apps.StockConfig",
     "sales.apps.SalesConfig",
     "attendance.apps.AttendanceConfig",
+    "finance.apps.FinanceConfig",
     "notification.apps.NotificationConfig",
     "axes",
 ]
@@ -122,7 +123,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-LANGUAGE_CODE = "fr"
+LANGUAGE_CODE = config("LANGUAGE_CODE", default="fr")
 LANGUAGES = [
     ("fr", "Français"),
     ("en", "English"),
@@ -134,7 +135,7 @@ LOCALE_PATHS = [
 
 TIME_ZONE = "Africa/Casablanca"
 
-USE_I18N = True
+USE_I18N = config("USE_I18N", cast=bool, default=True)
 
 USE_TZ = True
 
@@ -166,6 +167,7 @@ REST_FRAMEWORK = dict(
     PAGE_SIZE=20,
     DEFAULT_RENDERER_CLASSES=("rest_framework.renderers.JSONRenderer",),
     EXCEPTION_HANDLER="gestion_magasin_backend.utils.api_exception_handler",
+    URL_FORMAT_OVERRIDE=None,
     NON_FIELD_ERRORS_KEY="error",
     TOKEN_MODEL=None,
     DEFAULT_THROTTLE_CLASSES=[

@@ -1,9 +1,11 @@
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q, Sum
-from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import action
+from django.http import Http404
+from django.utils.translation import gettext_lazy as _
+from rest_framework import permissions, status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from attendance.importers import import_attendance_from_workbook
 from attendance.models import AttendanceImportBatch, AttendanceRecord, Employee
@@ -12,119 +14,230 @@ from attendance.serializers import (
     AttendanceRecordSerializer,
     EmployeeSerializer,
 )
-from gestion_magasin_backend.utils import split_csv_query_value
+from gestion_magasin_backend.utils import CustomPagination, split_csv_query_value
 from store.permissions import MANAGEMENT_ROLES, get_store_from_request, user_has_store_access, user_store_ids
 
 
-class EmployeeViewSet(viewsets.ModelViewSet):
-    serializer_class = EmployeeSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        qs = Employee.objects.select_related("store", "user")
-        if not self.request.user.is_staff:
-            qs = qs.filter(store_id__in=user_store_ids(self.request.user))
-        store_id = self.request.query_params.get("store") or self.request.query_params.get("store_id")
-        if store_id:
-            qs = qs.filter(store_id=store_id)
-        return qs
+def _paginate(request, queryset, serializer_class):
+    paginator = CustomPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = serializer_class(page, many=True, context={"request": request})
+    return paginator.get_paginated_response(serializer.data)
 
 
-class AttendanceRecordViewSet(viewsets.ModelViewSet):
-    serializer_class = AttendanceRecordSerializer
-    permission_classes = [permissions.IsAuthenticated]
+def _ensure_management_access(user, store_id):
+    if not user_has_store_access(user, store_id, roles=MANAGEMENT_ROLES):
+        raise PermissionDenied("Rôle insuffisant pour ce magasin.")
 
-    def get_queryset(self):
-        qs = AttendanceRecord.objects.select_related("store", "employee", "created_by")
-        if not self.request.user.is_staff:
-            qs = qs.filter(store_id__in=user_store_ids(self.request.user))
-        store_id = self.request.query_params.get("store") or self.request.query_params.get("store_id")
-        employee_id = self.request.query_params.get("employee")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
-        if store_id:
-            qs = qs.filter(store_id=store_id)
-        if employee_id:
-            qs = qs.filter(employee_id=employee_id)
-        if date_from:
-            qs = qs.filter(date__gte=date_from)
-        if date_to:
-            qs = qs.filter(date__lte=date_to)
-        return self.apply_filters(qs)
 
-    def apply_filters(self, qs):
-        params = self.request.query_params
-        search = params.get("search")
-        if search:
-            qs = qs.filter(
-                Q(employee__full_name__icontains=search)
-                | Q(responsible__icontains=search)
-                | Q(observations__icontains=search)
-                | Q(store__name__icontains=search)
-            )
-        for field in ("status",):
-            values = split_csv_query_value(params.get(field))
-            if values:
-                qs = qs.filter(**{f"{field}__in": values})
-        text_fields = {
-            "store_name": "store__name",
-            "employee_name": "employee__full_name",
-            "responsible": "responsible",
-            "observations": "observations",
-            "created_by_email": "created_by__email",
-        }
-        for param, field in text_fields.items():
-            for lookup in ("icontains", "istartswith", "iendswith"):
-                value = params.get(f"{param}__{lookup}")
-                if value:
-                    qs = qs.filter(**{f"{field}__{lookup}": value})
-            exact = params.get(param)
-            if exact:
-                qs = qs.filter(**{field: exact})
-        for param, field in {"hours_worked": "hours_worked", "delay_minutes": "delay_minutes"}.items():
-            exact = params.get(param)
-            if exact not in (None, ""):
-                qs = qs.filter(**{field: exact})
-            for suffix, lookup in {"gt": "gt", "gte": "gte", "lt": "lt", "lte": "lte", "ne": None}.items():
-                value = params.get(f"{param}__{suffix}")
-                if value in (None, ""):
-                    continue
-                if lookup is None:
-                    qs = qs.exclude(**{field: value})
-                else:
-                    qs = qs.filter(**{f"{field}__{lookup}": value})
-        date_after = params.get("date_after")
-        date_before = params.get("date_before")
-        if date_after:
-            qs = qs.filter(date__gte=date_after)
-        if date_before:
-            qs = qs.filter(date__lte=date_before)
-        return qs
+def _employee_queryset(request):
+    queryset = Employee.objects.select_related("store", "user")
+    if not request.user.is_staff:
+        queryset = queryset.filter(store_id__in=user_store_ids(request.user))
+    store_id = request.query_params.get("store") or request.query_params.get("store_id")
+    if store_id:
+        queryset = queryset.filter(store_id=store_id)
+    return queryset
 
-    def perform_create(self, serializer):
-        store = serializer.validated_data["store"]
-        if not user_has_store_access(self.request.user, store.pk, roles=MANAGEMENT_ROLES):
-            raise PermissionDenied("Rôle insuffisant pour ce magasin.")
-        serializer.save(created_by=self.request.user)
 
-    def perform_update(self, serializer):
-        store = serializer.validated_data.get("store", serializer.instance.store)
-        if not user_has_store_access(self.request.user, store.pk, roles=MANAGEMENT_ROLES):
-            raise PermissionDenied("Rôle insuffisant pour ce magasin.")
+def _get_employee_for_user(request, pk):
+    try:
+        return _employee_queryset(request).get(pk=pk)
+    except Employee.DoesNotExist:
+        raise Http404(_("Aucun employé ne correspond à la requête."))
+
+
+class EmployeeListCreateView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        return _paginate(request, _employee_queryset(request), EmployeeSerializer)
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        serializer = EmployeeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        _ensure_management_access(request.user, serializer.validated_data["store"].pk)
+        employee = serializer.save()
+        return Response(EmployeeSerializer(employee).data, status=status.HTTP_201_CREATED)
+
+
+class EmployeeDetailEditDeleteView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, pk, *args, **kwargs):
+        return Response(EmployeeSerializer(_get_employee_for_user(request, pk)).data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk, *args, **kwargs):
+        employee = _get_employee_for_user(request, pk)
+        _ensure_management_access(request.user, employee.store_id)
+        serializer = EmployeeSerializer(employee, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        next_store = serializer.validated_data.get("store", employee.store)
+        _ensure_management_access(request.user, next_store.pk)
         serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def perform_destroy(self, instance):
-        if not user_has_store_access(self.request.user, instance.store_id, roles=MANAGEMENT_ROLES):
-            raise PermissionDenied("Rôle insuffisant pour ce magasin.")
-        instance.delete()
+    def patch(self, request, pk, *args, **kwargs):
+        employee = _get_employee_for_user(request, pk)
+        _ensure_management_access(request.user, employee.store_id)
+        serializer = EmployeeSerializer(employee, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        next_store = serializer.validated_data.get("store", employee.store)
+        _ensure_management_access(request.user, next_store.pk)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(
-        detail=False,
-        methods=["post"],
-        parser_classes=[MultiPartParser],
-        url_path="import-workbook",
-    )
-    def import_workbook(self, request):
+    def delete(self, request, pk, *args, **kwargs):
+        employee = _get_employee_for_user(request, pk)
+        _ensure_management_access(request.user, employee.store_id)
+        employee.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _attendance_queryset(request):
+    queryset = AttendanceRecord.objects.select_related("store", "employee", "created_by")
+    if not request.user.is_staff:
+        queryset = queryset.filter(store_id__in=user_store_ids(request.user))
+    store_id = request.query_params.get("store") or request.query_params.get("store_id")
+    employee_id = request.query_params.get("employee")
+    date_from = request.query_params.get("date_from")
+    date_to = request.query_params.get("date_to")
+    if store_id:
+        queryset = queryset.filter(store_id=store_id)
+    if employee_id:
+        queryset = queryset.filter(employee_id=employee_id)
+    if date_from:
+        queryset = queryset.filter(date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(date__lte=date_to)
+    return _apply_attendance_filters(request, queryset)
+
+
+def _attendance_base_queryset(request):
+    queryset = AttendanceRecord.objects.select_related("store", "employee", "created_by")
+    if not request.user.is_staff:
+        queryset = queryset.filter(store_id__in=user_store_ids(request.user))
+    return queryset
+
+
+def _apply_attendance_filters(request, queryset):
+    params = request.query_params
+    search = params.get("search")
+    if search:
+        queryset = queryset.filter(
+            Q(employee__full_name__icontains=search)
+            | Q(responsible__icontains=search)
+            | Q(observations__icontains=search)
+            | Q(store__name__icontains=search)
+        )
+    values = split_csv_query_value(params.get("status"))
+    if values:
+        queryset = queryset.filter(status__in=values)
+
+    text_fields = {
+        "store_name": "store__name",
+        "employee_name": "employee__full_name",
+        "responsible": "responsible",
+        "observations": "observations",
+        "created_by_email": "created_by__email",
+    }
+    for param, field in text_fields.items():
+        for lookup in ("icontains", "istartswith", "iendswith"):
+            value = params.get(f"{param}__{lookup}")
+            if value:
+                queryset = queryset.filter(**{f"{field}__{lookup}": value})
+        exact = params.get(param)
+        if exact:
+            queryset = queryset.filter(**{field: exact})
+
+    numeric_lookups = {"gt": "gt", "gte": "gte", "lt": "lt", "lte": "lte", "ne": None}
+    for param, field in {"hours_worked": "hours_worked", "delay_minutes": "delay_minutes"}.items():
+        exact = params.get(param)
+        if exact not in (None, ""):
+            queryset = queryset.filter(**{field: exact})
+        for suffix, lookup in numeric_lookups.items():
+            value = params.get(f"{param}__{suffix}")
+            if value in (None, ""):
+                continue
+            if lookup is None:
+                queryset = queryset.exclude(**{field: value})
+            else:
+                queryset = queryset.filter(**{f"{field}__{lookup}": value})
+
+    date_after = params.get("date_after")
+    date_before = params.get("date_before")
+    if date_after:
+        queryset = queryset.filter(date__gte=date_after)
+    if date_before:
+        queryset = queryset.filter(date__lte=date_before)
+    return queryset
+
+
+def _get_attendance_for_user(request, pk):
+    try:
+        return _attendance_base_queryset(request).get(pk=pk)
+    except AttendanceRecord.DoesNotExist:
+        raise Http404(_("Aucun pointage ne correspond à la requête."))
+
+
+class AttendanceRecordListCreateView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        return _paginate(request, _attendance_queryset(request), AttendanceRecordSerializer)
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        serializer = AttendanceRecordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        store = serializer.validated_data["store"]
+        _ensure_management_access(request.user, store.pk)
+        record = serializer.save(created_by=request.user)
+        return Response(AttendanceRecordSerializer(record).data, status=status.HTTP_201_CREATED)
+
+
+class AttendanceRecordDetailEditDeleteView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, pk, *args, **kwargs):
+        return Response(AttendanceRecordSerializer(_get_attendance_for_user(request, pk)).data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk, *args, **kwargs):
+        record = _get_attendance_for_user(request, pk)
+        _ensure_management_access(request.user, record.store_id)
+        serializer = AttendanceRecordSerializer(record, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        next_store = serializer.validated_data.get("store", record.store)
+        _ensure_management_access(request.user, next_store.pk)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, pk, *args, **kwargs):
+        record = _get_attendance_for_user(request, pk)
+        _ensure_management_access(request.user, record.store_id)
+        serializer = AttendanceRecordSerializer(record, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        next_store = serializer.validated_data.get("store", record.store)
+        _ensure_management_access(request.user, next_store.pk)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk, *args, **kwargs):
+        record = _get_attendance_for_user(request, pk)
+        _ensure_management_access(request.user, record.store_id)
+        record.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AttendanceImportWorkbookView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (MultiPartParser,)
+
+    @staticmethod
+    def post(request, *args, **kwargs):
         store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
         file_obj = request.FILES.get("file")
         if not file_obj:
@@ -137,20 +250,44 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         )
         return Response(AttendanceImportBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=["get"], url_path="summary")
-    def summary(self, request):
+
+class AttendanceSummaryView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
         store = get_store_from_request(request)
-        qs = self.get_queryset().filter(store=store)
-        totals = qs.values("employee", "employee__full_name").annotate(hours=Sum("hours_worked")).order_by("employee__full_name")
-        return Response(list(totals))
+        queryset = _attendance_queryset(request).filter(store=store)
+        totals = (
+            queryset.values("employee", "employee__full_name")
+            .annotate(hours=Sum("hours_worked"))
+            .order_by("employee__full_name")
+        )
+        return Response(list(totals), status=status.HTTP_200_OK)
 
 
-class AttendanceImportBatchViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = AttendanceImportBatchSerializer
-    permission_classes = [permissions.IsAuthenticated]
+def _attendance_import_queryset(request):
+    queryset = AttendanceImportBatch.objects.select_related("store", "imported_by")
+    if request.user.is_staff:
+        return queryset
+    return queryset.filter(store_id__in=user_store_ids(request.user))
 
-    def get_queryset(self):
-        qs = AttendanceImportBatch.objects.select_related("store", "imported_by")
-        if self.request.user.is_staff:
-            return qs
-        return qs.filter(store_id__in=user_store_ids(self.request.user))
+
+class AttendanceImportBatchListView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        return _paginate(request, _attendance_import_queryset(request), AttendanceImportBatchSerializer)
+
+
+class AttendanceImportBatchDetailView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, pk, *args, **kwargs):
+        try:
+            batch = _attendance_import_queryset(request).get(pk=pk)
+        except AttendanceImportBatch.DoesNotExist:
+            raise Http404(_("Aucun import pointage ne correspond à la requête."))
+        return Response(AttendanceImportBatchSerializer(batch).data, status=status.HTTP_200_OK)

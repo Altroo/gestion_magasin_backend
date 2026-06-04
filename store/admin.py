@@ -12,8 +12,8 @@ class RoleAdmin(SimpleHistoryAdmin):
 
 @admin.register(Store)
 class StoreAdmin(SimpleHistoryAdmin):
-    list_display = ("name", "code", "phone", "is_active")
-    list_filter = ("is_active",)
+    list_display = ("name", "code", "phone", "is_global_stock", "is_active")
+    list_filter = ("is_global_stock", "is_active")
     search_fields = ("name", "code", "address", "phone")
 
 

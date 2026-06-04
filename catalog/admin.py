@@ -27,9 +27,8 @@ class ProductAdmin(SimpleHistoryAdmin):
 
 
 @admin.register(ProductImportBatch)
-class ProductImportBatchAdmin(admin.ModelAdmin):
+class ProductImportBatchAdmin(SimpleHistoryAdmin):
     list_display = ("file_name", "store", "imported_count", "skipped_count", "date_created")
     list_filter = ("store",)
     search_fields = ("file_name",)
     readonly_fields = ("date_created",)
-

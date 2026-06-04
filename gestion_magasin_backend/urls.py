@@ -59,6 +59,8 @@ urlpatterns = [
     path("api/stock/", include("stock.urls")),
     path("api/sales/", include("sales.urls")),
     path("api/attendance/", include("attendance.urls")),
+    path("api/finance/", include("finance.urls")),
+    path("api/reports/", include("reporting.urls")),
     path("api/notifications/", include("notification.urls")),
     # Maintenance state (unauthenticated)
     path("api/ws/maintenance/", GetMaintenanceView.as_view(), name="ws-maintenance"),

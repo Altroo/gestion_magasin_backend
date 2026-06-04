@@ -131,6 +131,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     can_create = models.BooleanField(_("Peut créer"), default=False)
     can_edit = models.BooleanField(_("Peut modifier"), default=False)
     can_delete = models.BooleanField(_("Peut supprimer"), default=False)
+    can_create_promotion = models.BooleanField(
+        _("Peut créer une promotion"),
+        default=False,
+    )
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 

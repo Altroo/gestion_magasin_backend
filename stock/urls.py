@@ -1,11 +1,47 @@
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
-from stock.views import StockBalanceViewSet, StockMovementViewSet
+from stock.views import (
+    BulkDeleteInventorySessionsView,
+    BulkDeletePurchasesView,
+    BulkDeleteStockBalancesView,
+    BulkDeleteStockTransfersView,
+    InventorySessionDetailEditDeleteView,
+    InventorySessionListCreateView,
+    InventorySessionValidateView,
+    PurchaseDetailEditDeleteView,
+    PurchaseListCreateView,
+    PurchaseReceiveView,
+    StockAdjustmentView,
+    StockBalanceDetailEditDeleteView,
+    StockBalanceListCreateView,
+    StockMovementDetailView,
+    StockMovementListView,
+    StockThresholdUpdateView,
+    StockTransferDetailEditDeleteView,
+    StockTransferListCreateView,
+    StockTransferValidateView,
+)
 
-router = DefaultRouter()
-router.register("balances", StockBalanceViewSet, basename="stock-balances")
-router.register("movements", StockMovementViewSet, basename="stock-movements")
+app_name = "stock"
 
-urlpatterns = [path("", include(router.urls))]
-
+urlpatterns = [
+    path("purchases/", PurchaseListCreateView.as_view(), name="purchases-list-create"),
+    path("purchases/bulk-delete/", BulkDeletePurchasesView.as_view(), name="purchases-bulk-delete"),
+    path("purchases/<int:pk>/receive/", PurchaseReceiveView.as_view(), name="purchases-receive"),
+    path("purchases/<int:pk>/", PurchaseDetailEditDeleteView.as_view(), name="purchases-detail"),
+    path("inventory/", InventorySessionListCreateView.as_view(), name="inventory-list-create"),
+    path("inventory/bulk-delete/", BulkDeleteInventorySessionsView.as_view(), name="inventory-bulk-delete"),
+    path("inventory/<int:pk>/validate/", InventorySessionValidateView.as_view(), name="inventory-validate"),
+    path("inventory/<int:pk>/", InventorySessionDetailEditDeleteView.as_view(), name="inventory-detail"),
+    path("transfers/", StockTransferListCreateView.as_view(), name="transfers-list-create"),
+    path("transfers/bulk-delete/", BulkDeleteStockTransfersView.as_view(), name="transfers-bulk-delete"),
+    path("transfers/<int:pk>/validate/", StockTransferValidateView.as_view(), name="transfers-validate"),
+    path("transfers/<int:pk>/", StockTransferDetailEditDeleteView.as_view(), name="transfers-detail"),
+    path("balances/", StockBalanceListCreateView.as_view(), name="stock-balances-list-create"),
+    path("balances/adjust/", StockAdjustmentView.as_view(), name="stock-balances-adjust"),
+    path("balances/bulk-delete/", BulkDeleteStockBalancesView.as_view(), name="stock-balances-bulk-delete"),
+    path("balances/<int:pk>/", StockBalanceDetailEditDeleteView.as_view(), name="stock-balances-detail"),
+    path("balances/<int:pk>/threshold/", StockThresholdUpdateView.as_view(), name="stock-balances-threshold"),
+    path("movements/", StockMovementListView.as_view(), name="stock-movements-list"),
+    path("movements/<int:pk>/", StockMovementDetailView.as_view(), name="stock-movements-detail"),
+]

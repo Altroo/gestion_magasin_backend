@@ -125,6 +125,7 @@ class ProductImportBatch(models.Model):
     imported_count = models.PositiveIntegerField(default=0)
     skipped_count = models.PositiveIntegerField(default=0)
     date_created = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = _("Import articles")
@@ -133,4 +134,3 @@ class ProductImportBatch(models.Model):
 
     def __str__(self) -> str:
         return f"{self.file_name} - {self.store}"
-
