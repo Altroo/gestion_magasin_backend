@@ -1,11 +1,18 @@
 from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
-from catalog.models import Category, Product, ProductImportBatch
+from catalog.models import Category, Product, ProductImportBatch, ProductUnit
 
 
 @admin.register(Category)
 class CategoryAdmin(SimpleHistoryAdmin):
+    list_display = ("code", "name", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("code", "name")
+
+
+@admin.register(ProductUnit)
+class ProductUnitAdmin(SimpleHistoryAdmin):
     list_display = ("code", "name", "is_active")
     list_filter = ("is_active",)
     search_fields = ("code", "name")
@@ -18,11 +25,12 @@ class ProductAdmin(SimpleHistoryAdmin):
         "barcode",
         "name",
         "category",
+        "unit",
         "counter_price",
         "default_stock_alert",
         "is_active",
     )
-    list_filter = ("category", "is_active", "compliance_required")
+    list_filter = ("category", "unit", "is_active", "compliance_required")
     search_fields = ("reference", "barcode", "name")
 
 

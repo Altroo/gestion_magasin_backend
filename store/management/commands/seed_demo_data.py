@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from attendance.models import AttendanceRecord, Employee
-from catalog.models import Category, Product
+from catalog.models import Category, Product, ProductUnit
 from finance.models import Expense, ExpenseCategory
 from sales.models import Customer, PaymentMode, Promotion, PromotionLine
 from sales.services import create_sale
@@ -167,6 +167,10 @@ class Command(BaseCommand):
             code="demo-hygiene",
             defaults={"name": "Hygiene", "is_active": True},
         )
+        unit, _ = ProductUnit.objects.update_or_create(
+            code="unite",
+            defaults={"name": "Unité", "is_active": True},
+        )
         product_specs = [
             ("DEMO-EAU-50", "6111000000011", "Eau minerale 50cl", drinks, "3.50", "6.00", "25.000"),
             ("DEMO-JUS-OR", "6111000000028", "Jus orange 1L", drinks, "9.00", "16.00", "12.000"),
@@ -185,7 +189,7 @@ class Command(BaseCommand):
                     "barcode": barcode,
                     "name": name,
                     "category": category,
-                    "unit": "unite",
+                    "unit": unit,
                     "purchase_price": Decimal(purchase_price),
                     "wholesale_price": Decimal(counter_price) - Decimal("2.00"),
                     "detail_price": Decimal(counter_price) - Decimal("1.00"),

@@ -4,7 +4,7 @@ from typing import BinaryIO
 
 from django.db import transaction
 
-from catalog.models import Category, Product, ProductImportBatch
+from catalog.models import Category, Product, ProductImportBatch, ProductUnit
 from stock.models import StockBalance
 
 
@@ -86,6 +86,22 @@ def _category(code: str) -> Category | None:
     )[0]
 
 
+def _unit(label: str) -> ProductUnit:
+    normalized = (label or "unité").strip() or "unité"
+    code = (
+        normalized.lower()
+        .replace("é", "e")
+        .replace("è", "e")
+        .replace("ê", "e")
+        .replace("à", "a")
+        .replace(" ", "-")
+    )[:40] or "unite"
+    return ProductUnit.objects.get_or_create(
+        code=code,
+        defaults={"name": normalized, "is_active": True},
+    )[0]
+
+
 @transaction.atomic
 def import_products_from_workbook(
     file_obj: BinaryIO | str,
@@ -121,7 +137,7 @@ def import_products_from_workbook(
             continue
 
         category = _category(_clean(row[indexes["category_code"]])) if "category_code" in indexes else None
-        unit = _clean(row[indexes["unit"]]) if "unit" in indexes else "unité"
+        unit = _unit(_clean(row[indexes["unit"]]) if "unit" in indexes else "unité")
         opening_stock = _decimal(row[indexes["stock"]]) if "stock" in indexes else Decimal("0")
         lookup = {"reference": reference} if reference else {"name": name}
         product, _ = Product.objects.update_or_create(
@@ -130,7 +146,7 @@ def import_products_from_workbook(
                 "barcode": reference or None,
                 "name": name or reference,
                 "category": category,
-                "unit": unit or "unité",
+                "unit": unit,
                 "purchase_price": _decimal(row[indexes["purchase_price"]]) if "purchase_price" in indexes else Decimal("0"),
                 "wholesale_price": _decimal(row[indexes["wholesale_price"]]) if "wholesale_price" in indexes else Decimal("0"),
                 "detail_price": _decimal(row[indexes["detail_price"]]) if "detail_price" in indexes else Decimal("0"),

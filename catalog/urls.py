@@ -10,6 +10,8 @@ from catalog.views import (
     ProductImportWorkbookView,
     ProductListCreateView,
     ProductScanView,
+    ProductUnitDetailEditDeleteView,
+    ProductUnitListCreateView,
 )
 
 app_name = "catalog"
@@ -17,6 +19,8 @@ app_name = "catalog"
 urlpatterns = [
     path("categories/", CategoryListCreateView.as_view(), name="categories-list-create"),
     path("categories/<int:pk>/", CategoryDetailEditDeleteView.as_view(), name="categories-detail"),
+    path("units/", ProductUnitListCreateView.as_view(), name="units-list-create"),
+    path("units/<int:pk>/", ProductUnitDetailEditDeleteView.as_view(), name="units-detail"),
     path("imports/", ProductImportBatchListView.as_view(), name="product-imports-list"),
     path("imports/<int:pk>/", ProductImportBatchDetailView.as_view(), name="product-imports-detail"),
     path("products/", ProductListCreateView.as_view(), name="products-list-create"),

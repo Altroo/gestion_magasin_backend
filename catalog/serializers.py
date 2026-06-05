@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from catalog.models import Category, Product, ProductImportBatch
+from catalog.models import Category, Product, ProductImportBatch, ProductUnit
 from stock.models import StockBalance
 
 
@@ -11,8 +11,16 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ["date_created", "date_updated"]
 
 
+class ProductUnitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductUnit
+        fields = ["id", "code", "name", "is_active", "date_created", "date_updated"]
+        read_only_fields = ["date_created", "date_updated"]
+
+
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
+    unit_name = serializers.CharField(source="unit.name", read_only=True)
     available_stock = serializers.SerializerMethodField()
     min_stock = serializers.SerializerMethodField()
 
@@ -26,6 +34,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "category",
             "category_name",
             "unit",
+            "unit_name",
             "purchase_price",
             "wholesale_price",
             "detail_price",

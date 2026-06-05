@@ -9,11 +9,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from catalog.importers import import_products_from_workbook
-from catalog.models import Category, Product, ProductImportBatch
+from catalog.models import Category, Product, ProductImportBatch, ProductUnit
 from catalog.serializers import (
     CategorySerializer,
     ProductImportBatchSerializer,
     ProductSerializer,
+    ProductUnitSerializer,
 )
 from gestion_magasin_backend.utils import CustomPagination, parse_bool_csv_query_value
 from stock.models import StockBalance
@@ -53,8 +54,29 @@ def _category_queryset(request):
     return queryset
 
 
+def _unit_queryset(request):
+    queryset = ProductUnit.objects.all()
+    search = request.query_params.get("search")
+    if search:
+        queryset = queryset.filter(Q(code__icontains=search) | Q(name__icontains=search))
+
+    for param, field in {"code": "code", "name": "name"}.items():
+        for lookup in ("icontains", "istartswith", "iendswith"):
+            value = request.query_params.get(f"{param}__{lookup}")
+            if value:
+                queryset = queryset.filter(**{f"{field}__{lookup}": value})
+        exact = request.query_params.get(param)
+        if exact:
+            queryset = queryset.filter(**{field: exact})
+
+    is_active_values = parse_bool_csv_query_value(request.query_params.get("is_active"))
+    if is_active_values:
+        queryset = queryset.filter(is_active__in=is_active_values)
+    return queryset
+
+
 def _product_queryset(request):
-    queryset = Product.objects.select_related("category").all()
+    queryset = Product.objects.select_related("category", "unit").all()
     search = request.query_params.get("search")
     store_id = request.query_params.get("store") or request.query_params.get("store_id")
 
@@ -83,7 +105,7 @@ def _apply_product_filters(request, queryset):
         "barcode": "barcode",
         "name": "name",
         "category_name": "category__name",
-        "unit": "unit",
+        "unit_name": "unit__name",
     }
     for param, field in text_fields.items():
         for lookup in ("icontains", "istartswith", "iendswith"):
@@ -154,7 +176,7 @@ def _product_serializer_context(request):
 
 def _get_product(pk):
     try:
-        return Product.objects.select_related("category").get(pk=pk)
+        return Product.objects.select_related("category", "unit").get(pk=pk)
     except Product.DoesNotExist:
         raise Http404(_("Aucun article ne correspond à la requête."))
 
@@ -197,6 +219,53 @@ class CategoryDetailEditDeleteView(APIView):
     def patch(self, request, pk, *args, **kwargs):
         category = self.get_object(pk)
         serializer = CategorySerializer(category, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk, *args, **kwargs):
+        self.get_object(pk).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProductUnitListCreateView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        return _paginate(request, _unit_queryset(request), ProductUnitSerializer)
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        serializer = ProductUnitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        unit = serializer.save()
+        return Response(ProductUnitSerializer(unit).data, status=status.HTTP_201_CREATED)
+
+
+class ProductUnitDetailEditDeleteView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get_object(pk):
+        try:
+            return ProductUnit.objects.get(pk=pk)
+        except ProductUnit.DoesNotExist:
+            raise Http404(_("Aucune unité article ne correspond à la requête."))
+
+    def get(self, request, pk, *args, **kwargs):
+        return Response(ProductUnitSerializer(self.get_object(pk)).data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk, *args, **kwargs):
+        unit = self.get_object(pk)
+        serializer = ProductUnitSerializer(unit, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, pk, *args, **kwargs):
+        unit = self.get_object(pk)
+        serializer = ProductUnitSerializer(unit, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)

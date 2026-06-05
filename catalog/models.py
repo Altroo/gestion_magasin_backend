@@ -20,6 +20,30 @@ class Category(models.Model):
         return self.name
 
 
+class ProductUnit(models.Model):
+    code = models.CharField(max_length=40, unique=True, verbose_name=_("Code"))
+    name = models.CharField(max_length=80, unique=True, verbose_name=_("Nom"))
+    is_active = models.BooleanField(default=True, db_index=True, verbose_name=_("Actif"))
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = _("Unité article")
+        verbose_name_plural = _("Unités articles")
+        ordering = ("code", "name")
+
+    def __str__(self) -> str:
+        return self.name
+
+    @classmethod
+    def default(cls):
+        return cls.objects.get_or_create(
+            code="unite",
+            defaults={"name": "Unité", "is_active": True},
+        )[0]
+
+
 class Product(models.Model):
     reference = models.CharField(
         max_length=80,
@@ -45,7 +69,12 @@ class Product(models.Model):
         blank=True,
         verbose_name=_("Famille"),
     )
-    unit = models.CharField(max_length=40, default="unité", verbose_name=_("Unité"))
+    unit = models.ForeignKey(
+        ProductUnit,
+        on_delete=models.PROTECT,
+        related_name="products",
+        verbose_name=_("Unité"),
+    )
     purchase_price = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -101,8 +130,8 @@ class Product(models.Model):
     def save(self, *args, **kwargs):
         self.reference = self.reference or None
         self.barcode = self.barcode or None
-        if not self.unit:
-            self.unit = "unité"
+        if not self.unit_id:
+            self.unit = ProductUnit.default()
         super().save(*args, **kwargs)
 
 
