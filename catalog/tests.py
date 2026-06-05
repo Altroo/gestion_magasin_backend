@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from catalog.models import Category, Product
+from catalog.models import Category, Product, ProductUnit
 from stock.models import StockBalance
 from store.models import Role, Store, StoreMembership
 
@@ -116,3 +116,31 @@ def test_product_bulk_delete_removes_selected_products_for_responsable():
 
     assert response.status_code == status.HTTP_200_OK
     assert not Product.objects.filter(pk=product.pk).exists()
+
+
+def test_product_create_requires_barcode_for_caisse_scan():
+    user, store, category = create_store_setup()
+    unit = ProductUnit.default()
+    client = authenticated_client(user)
+
+    response = client.post(
+        f"/api/catalog/products/?store={store.pk}",
+        {
+            "reference": "NO-BARCODE",
+            "barcode": "",
+            "name": "Article sans code barre",
+            "category": category.pk,
+            "unit": unit.pk,
+            "purchase_price": "10.00",
+            "wholesale_price": "12.00",
+            "detail_price": "14.00",
+            "counter_price": "15.00",
+            "default_stock_alert": "2.000",
+            "compliance_required": False,
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "barcode" in response.data["details"]

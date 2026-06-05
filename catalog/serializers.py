@@ -51,6 +51,15 @@ class ProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["date_created", "date_updated"]
 
+    def validate(self, attrs):
+        barcode = attrs.get("barcode", getattr(self.instance, "barcode", None))
+        if not barcode or not str(barcode).strip():
+            raise serializers.ValidationError(
+                {"barcode": ["Ce champ est obligatoire."]}
+            )
+        attrs["barcode"] = str(barcode).strip()
+        return attrs
+
     def get_available_stock(self, instance):
         store_id = self.context.get("store_id")
         if not store_id:
