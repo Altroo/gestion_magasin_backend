@@ -120,10 +120,6 @@ def _apply_product_filters(request, queryset):
     if bool_values:
         queryset = queryset.filter(is_active__in=bool_values)
 
-    compliance_values = parse_bool_csv_query_value(params.get("compliance_required"))
-    if compliance_values:
-        queryset = queryset.filter(compliance_required__in=compliance_values)
-
     numeric_fields = {
         "purchase_price": "purchase_price",
         "wholesale_price": "wholesale_price",

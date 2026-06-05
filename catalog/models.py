@@ -111,9 +111,6 @@ class Product(models.Model):
     shelf_life_days = models.PositiveIntegerField(
         null=True, blank=True, verbose_name=_("Durée")
     )
-    compliance_required = models.BooleanField(
-        default=False, verbose_name=_("Obligation conformité")
-    )
     is_active = models.BooleanField(default=True, db_index=True, verbose_name=_("Actif"))
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)

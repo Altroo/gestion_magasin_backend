@@ -26,7 +26,6 @@ HEADER_MAP = {
     "Date expiration": "expiration_date",
     "Duree": "shelf_life_days",
     "Durée": "shelf_life_days",
-    "obligation": "compliance_required",
 }
 
 
@@ -154,7 +153,6 @@ def import_products_from_workbook(
                 "default_stock_alert": _decimal(row[indexes["default_stock_alert"]]) if "default_stock_alert" in indexes else Decimal("0"),
                 "expiration_date": _date_or_none(row[indexes["expiration_date"]]) if "expiration_date" in indexes else None,
                 "shelf_life_days": _int_or_none(row[indexes["shelf_life_days"]]) if "shelf_life_days" in indexes else None,
-                "compliance_required": _bool(row[indexes["compliance_required"]]) if "compliance_required" in indexes else False,
             },
         )
         balance, created = StockBalance.objects.get_or_create(

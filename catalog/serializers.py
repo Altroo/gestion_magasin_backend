@@ -42,7 +42,6 @@ class ProductSerializer(serializers.ModelSerializer):
             "default_stock_alert",
             "expiration_date",
             "shelf_life_days",
-            "compliance_required",
             "is_active",
             "available_stock",
             "min_stock",

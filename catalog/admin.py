@@ -30,7 +30,7 @@ class ProductAdmin(SimpleHistoryAdmin):
         "default_stock_alert",
         "is_active",
     )
-    list_filter = ("category", "unit", "is_active", "compliance_required")
+    list_filter = ("category", "unit", "is_active")
     search_fields = ("reference", "barcode", "name")
 
 

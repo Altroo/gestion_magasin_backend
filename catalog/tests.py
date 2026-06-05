@@ -136,7 +136,6 @@ def test_product_create_requires_barcode_for_caisse_scan():
             "detail_price": "14.00",
             "counter_price": "15.00",
             "default_stock_alert": "2.000",
-            "compliance_required": False,
             "is_active": True,
         },
         format="json",
