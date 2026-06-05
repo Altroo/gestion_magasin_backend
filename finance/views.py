@@ -36,6 +36,10 @@ def _expense_queryset(request):
     if store_id:
         queryset = queryset.filter(store_id=store_id)
 
+    store_ids = split_csv_query_value(request.query_params.get("store_ids"))
+    if store_ids:
+        queryset = queryset.filter(store_id__in=store_ids)
+
     search = request.query_params.get("search")
     if search:
         queryset = queryset.filter(
@@ -52,6 +56,10 @@ def _expense_queryset(request):
     category = request.query_params.get("category")
     if category:
         queryset = queryset.filter(category_id=category)
+
+    category_ids = split_csv_query_value(request.query_params.get("category_ids"))
+    if category_ids:
+        queryset = queryset.filter(category_id__in=category_ids)
 
     date_after = request.query_params.get("expense_date_after")
     date_before = request.query_params.get("expense_date_before")
@@ -87,8 +95,6 @@ class ExpenseCategoryListCreateView(APIView):
 
     @staticmethod
     def post(request):
-        if not request.user.is_staff:
-            raise PermissionDenied("Seuls les administrateurs peuvent créer un poste de dépense.")
         serializer = ExpenseCategorySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         category = serializer.save()
@@ -110,24 +116,18 @@ class ExpenseCategoryDetailEditDeleteView(APIView):
         return Response(ExpenseCategorySerializer(category).data)
 
     def put(self, request, pk):
-        if not request.user.is_staff:
-            raise PermissionDenied("Seuls les administrateurs peuvent modifier un poste de dépense.")
         category = self.get_object(pk)
         serializer = ExpenseCategorySerializer(category, data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(ExpenseCategorySerializer(serializer.save()).data)
 
     def patch(self, request, pk):
-        if not request.user.is_staff:
-            raise PermissionDenied("Seuls les administrateurs peuvent modifier un poste de dépense.")
         category = self.get_object(pk)
         serializer = ExpenseCategorySerializer(category, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         return Response(ExpenseCategorySerializer(serializer.save()).data)
 
     def delete(self, request, pk):
-        if not request.user.is_staff:
-            raise PermissionDenied("Seuls les administrateurs peuvent supprimer un poste de dépense.")
         category = self.get_object(pk)
         category.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

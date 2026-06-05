@@ -106,8 +106,14 @@ def _attendance_queryset(request):
     date_to = request.query_params.get("date_to")
     if store_id:
         queryset = queryset.filter(store_id=store_id)
+    store_ids = split_csv_query_value(request.query_params.get("store_ids"))
+    if store_ids:
+        queryset = queryset.filter(store_id__in=store_ids)
     if employee_id:
         queryset = queryset.filter(employee_id=employee_id)
+    employee_ids = split_csv_query_value(request.query_params.get("employee_ids"))
+    if employee_ids:
+        queryset = queryset.filter(employee_id__in=employee_ids)
     if date_from:
         queryset = queryset.filter(date__gte=date_from)
     if date_to:
@@ -135,6 +141,9 @@ def _apply_attendance_filters(request, queryset):
     values = split_csv_query_value(params.get("status"))
     if values:
         queryset = queryset.filter(status__in=values)
+    values = split_csv_query_value(params.get("shift"))
+    if values:
+        queryset = queryset.filter(shift__in=values)
 
     text_fields = {
         "store_name": "store__name",

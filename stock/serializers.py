@@ -14,9 +14,14 @@ from stock.models import (
 
 class StockBalanceSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
-    product_reference = serializers.CharField(source="product.reference", read_only=True)
+    product_reference = serializers.CharField(
+        source="product.reference", read_only=True
+    )
     product_barcode = serializers.CharField(source="product.barcode", read_only=True)
-    category_name = serializers.CharField(source="product.category.name", read_only=True)
+    category_name = serializers.CharField(
+        source="product.category.name", read_only=True
+    )
+    unit_name = serializers.CharField(source="product.unit.name", read_only=True)
     store_name = serializers.CharField(source="store.name", read_only=True)
     effective_min_stock = serializers.DecimalField(
         max_digits=12, decimal_places=3, read_only=True
@@ -34,6 +39,7 @@ class StockBalanceSerializer(serializers.ModelSerializer):
             "product_reference",
             "product_barcode",
             "category_name",
+            "unit_name",
             "quantity",
             "min_stock",
             "effective_min_stock",
@@ -48,7 +54,9 @@ class StockBalanceSerializer(serializers.ModelSerializer):
 
 class StockMovementSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
-    product_reference = serializers.CharField(source="product.reference", read_only=True)
+    product_reference = serializers.CharField(
+        source="product.reference", read_only=True
+    )
     store_name = serializers.CharField(source="store.name", read_only=True)
     created_by_email = serializers.CharField(source="created_by.email", read_only=True)
 
@@ -88,7 +96,9 @@ class StockAdjustmentSerializer(serializers.Serializer):
         ],
         default=StockMovement.Types.ADJUSTMENT,
     )
-    unit_cost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    unit_cost = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
     note = serializers.CharField(required=False, allow_blank=True)
     allow_negative = serializers.BooleanField(required=False, default=False)
 
@@ -99,7 +109,9 @@ class StockThresholdSerializer(serializers.Serializer):
 
 class StockTransferLineSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
-    product_reference = serializers.CharField(source="product.reference", read_only=True)
+    product_reference = serializers.CharField(
+        source="product.reference", read_only=True
+    )
     product_barcode = serializers.CharField(source="product.barcode", read_only=True)
 
     class Meta:
@@ -115,10 +127,16 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
 
 
 class StockTransferSerializer(serializers.ModelSerializer):
-    source_store_name = serializers.CharField(source="source_store.name", read_only=True)
-    target_store_name = serializers.CharField(source="target_store.name", read_only=True)
+    source_store_name = serializers.CharField(
+        source="source_store.name", read_only=True
+    )
+    target_store_name = serializers.CharField(
+        source="target_store.name", read_only=True
+    )
     created_by_email = serializers.CharField(source="created_by.email", read_only=True)
-    validated_by_email = serializers.CharField(source="validated_by.email", read_only=True)
+    validated_by_email = serializers.CharField(
+        source="validated_by.email", read_only=True
+    )
     lines = StockTransferLineSerializer(many=True, read_only=True)
 
     class Meta:
@@ -175,23 +193,33 @@ class StockTransferCreateSerializer(serializers.Serializer):
     lines = StockTransferLineInputSerializer(many=True)
 
     def validate(self, attrs):
-        attrs["target_store"] = attrs.get("target_store") or attrs.get("target_store_id")
+        attrs["target_store"] = attrs.get("target_store") or attrs.get(
+            "target_store_id"
+        )
         if not attrs.get("target_store"):
-            raise serializers.ValidationError({"target_store": "Magasin destination requis."})
+            raise serializers.ValidationError(
+                {"target_store": "Magasin destination requis."}
+            )
         return attrs
 
     def validate_lines(self, value):
         if not value:
-            raise serializers.ValidationError("Le transfert doit contenir au moins une ligne.")
+            raise serializers.ValidationError(
+                "Le transfert doit contenir au moins une ligne."
+            )
         product_ids = [item["product"] for item in value]
         if len(product_ids) != len(set(product_ids)):
-            raise serializers.ValidationError("Un article ne peut figurer qu'une seule fois.")
+            raise serializers.ValidationError(
+                "Un article ne peut figurer qu'une seule fois."
+            )
         return value
 
 
 class PurchaseLineSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
-    product_reference = serializers.CharField(source="product.reference", read_only=True)
+    product_reference = serializers.CharField(
+        source="product.reference", read_only=True
+    )
     product_barcode = serializers.CharField(source="product.barcode", read_only=True)
 
     class Meta:
@@ -212,7 +240,9 @@ class PurchaseLineSerializer(serializers.ModelSerializer):
 class PurchaseSerializer(serializers.ModelSerializer):
     store_name = serializers.CharField(source="store.name", read_only=True)
     created_by_email = serializers.CharField(source="created_by.email", read_only=True)
-    received_by_email = serializers.CharField(source="received_by.email", read_only=True)
+    received_by_email = serializers.CharField(
+        source="received_by.email", read_only=True
+    )
     lines = PurchaseLineSerializer(many=True, read_only=True)
 
     class Meta:
@@ -268,19 +298,25 @@ class PurchaseCreateSerializer(serializers.Serializer):
     supplier_name = serializers.CharField(required=False, allow_blank=True)
     reference = serializers.CharField(required=False, allow_blank=True)
     purchase_date = serializers.DateField(required=False)
-    status = serializers.ChoiceField(choices=Purchase.Statuses.choices, default=Purchase.Statuses.DRAFT)
+    status = serializers.ChoiceField(
+        choices=Purchase.Statuses.choices, default=Purchase.Statuses.DRAFT
+    )
     note = serializers.CharField(required=False, allow_blank=True)
     lines = PurchaseLineInputSerializer(many=True)
 
     def validate_lines(self, value):
         if not value:
-            raise serializers.ValidationError("L'achat doit contenir au moins une ligne.")
+            raise serializers.ValidationError(
+                "L'achat doit contenir au moins une ligne."
+            )
         return value
 
 
 class InventoryLineSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
-    product_reference = serializers.CharField(source="product.reference", read_only=True)
+    product_reference = serializers.CharField(
+        source="product.reference", read_only=True
+    )
     product_barcode = serializers.CharField(source="product.barcode", read_only=True)
 
     class Meta:
@@ -302,7 +338,9 @@ class InventoryLineSerializer(serializers.ModelSerializer):
 class InventorySessionSerializer(serializers.ModelSerializer):
     store_name = serializers.CharField(source="store.name", read_only=True)
     created_by_email = serializers.CharField(source="created_by.email", read_only=True)
-    validated_by_email = serializers.CharField(source="validated_by.email", read_only=True)
+    validated_by_email = serializers.CharField(
+        source="validated_by.email", read_only=True
+    )
     lines = InventoryLineSerializer(many=True, read_only=True)
 
     class Meta:
@@ -336,7 +374,9 @@ class InventorySessionSerializer(serializers.ModelSerializer):
 
 class InventoryLineInputSerializer(serializers.Serializer):
     product = serializers.IntegerField()
-    expected_quantity = serializers.DecimalField(max_digits=12, decimal_places=3, required=False)
+    expected_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=3, required=False
+    )
     counted_quantity = serializers.DecimalField(max_digits=12, decimal_places=3)
     note = serializers.CharField(required=False, allow_blank=True)
 
@@ -352,11 +392,16 @@ class InventorySessionCreateSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=80)
     title = serializers.CharField(max_length=160)
     inventory_date = serializers.DateField(required=False)
-    status = serializers.ChoiceField(choices=InventorySession.Statuses.choices, default=InventorySession.Statuses.DRAFT)
+    status = serializers.ChoiceField(
+        choices=InventorySession.Statuses.choices,
+        default=InventorySession.Statuses.DRAFT,
+    )
     note = serializers.CharField(required=False, allow_blank=True)
     lines = InventoryLineInputSerializer(many=True)
 
     def validate_lines(self, value):
         if not value:
-            raise serializers.ValidationError("L'inventaire doit contenir au moins une ligne.")
+            raise serializers.ValidationError(
+                "L'inventaire doit contenir au moins une ligne."
+            )
         return value

@@ -8,7 +8,14 @@ from rest_framework.test import APIClient
 from catalog.models import Category, Product
 from notification.models import Notification
 from notification.tasks import notify_low_stock_if_needed
-from sales.models import PaymentMode, Promotion, PromotionLine, Sale, SaleLine, SalePromotionLine
+from sales.models import (
+    PaymentMode,
+    Promotion,
+    PromotionLine,
+    Sale,
+    SaleLine,
+    SalePromotionLine,
+)
 from stock.models import StockBalance, StockMovement
 from store.models import Role, Store, StoreMembership
 
@@ -32,7 +39,9 @@ def create_store_setup(user, role_code=Role.Codes.VENDEUR):
     )
     StoreMembership.objects.get_or_create(user=user, store=store, role=role)
     PaymentMode.objects.get_or_create(code="cash", defaults={"name": "Espèces"})
-    category, _ = Category.objects.get_or_create(code="1", defaults={"name": "Famille 1"})
+    category, _ = Category.objects.get_or_create(
+        code="1", defaults={"name": "Famille 1"}
+    )
     product = Product.objects.create(
         reference="ART-001",
         barcode="ART-001",
@@ -77,7 +86,9 @@ def test_confirm_sale_reduces_stock_and_creates_audit_rows():
     assert response.status_code == status.HTTP_201_CREATED
     sale = Sale.objects.get(id=response.data["id"])
     assert sale.total == Decimal("25.00")
-    assert SaleLine.objects.filter(sale=sale, product=product, quantity=Decimal("1.000")).exists()
+    assert SaleLine.objects.filter(
+        sale=sale, product=product, quantity=Decimal("1.000")
+    ).exists()
 
     balance = StockBalance.objects.get(store=store, product=product)
     assert balance.quantity == Decimal("2.000")
@@ -146,8 +157,12 @@ def test_confirm_promotion_sale_reduces_component_stock():
     sale = Sale.objects.get(id=response.data["id"])
     assert sale.total == Decimal("40.00")
     assert SalePromotionLine.objects.filter(sale=sale, promotion=promotion).exists()
-    assert StockBalance.objects.get(store=store, product=product).quantity == Decimal("1.000")
-    assert StockBalance.objects.get(store=store, product=second_product).quantity == Decimal("4.000")
+    assert StockBalance.objects.get(store=store, product=product).quantity == Decimal(
+        "1.000"
+    )
+    assert StockBalance.objects.get(
+        store=store, product=second_product
+    ).quantity == Decimal("4.000")
 
 
 def test_low_stock_task_notifies_store_managers():
@@ -159,7 +174,9 @@ def test_low_stock_task_notifies_store_managers():
 
     notify_low_stock_if_needed(balance.pk)
 
-    notification = Notification.objects.get(user=responsible, product=product, store=store)
+    notification = Notification.objects.get(
+        user=responsible, product=product, store=store
+    )
     assert notification.notification_type == Notification.Types.LOW_STOCK
     assert "Stock minimum atteint" in notification.title
 
@@ -184,7 +201,9 @@ def test_lecture_role_cannot_confirm_sale():
 def test_sales_list_accepts_comma_separated_status_filters():
     user = create_user("sales-filter@example.com")
     store, _product = create_store_setup(user)
-    confirmed = Sale.objects.create(store=store, seller=user, status=Sale.Statuses.CONFIRMED)
+    confirmed = Sale.objects.create(
+        store=store, seller=user, status=Sale.Statuses.CONFIRMED
+    )
     void = Sale.objects.create(store=store, seller=user, status=Sale.Statuses.VOID)
     client = authenticated_client(user)
 
@@ -198,3 +217,24 @@ def test_sales_list_accepts_comma_separated_status_filters():
 
     assert response.status_code == status.HTTP_200_OK
     assert {item["id"] for item in response.data["results"]} == {confirmed.pk, void.pk}
+
+
+def test_sales_list_filters_by_payment_mode_id():
+    user = create_user("sales-payment-mode-filter@example.com")
+    store, _product = create_store_setup(user)
+    cash = PaymentMode.objects.get(code="cash")
+    card = PaymentMode.objects.create(code="card-test", name="Carte test")
+    cash_sale = Sale.objects.create(store=store, seller=user, payment_mode=cash)
+    Sale.objects.create(store=store, seller=user, payment_mode=card)
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/sales/",
+        {
+            "store": store.pk,
+            "payment_mode": str(cash.pk),
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.data["results"]] == [cash_sale.pk]

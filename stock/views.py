@@ -34,7 +34,11 @@ from stock.serializers import (
     StockTransferCreateSerializer,
     StockTransferSerializer,
 )
-from stock.services import apply_stock_movement, receive_purchase, validate_inventory_session
+from stock.services import (
+    apply_stock_movement,
+    receive_purchase,
+    validate_inventory_session,
+)
 from stock.services import validate_stock_transfer
 from store.permissions import (
     MANAGEMENT_ROLES,
@@ -53,7 +57,9 @@ def _paginate(request, queryset, serializer_class):
 
 
 def _stock_balance_base_queryset(request):
-    queryset = StockBalance.objects.select_related("store", "product", "product__category")
+    queryset = StockBalance.objects.select_related(
+        "store", "product", "product__category", "product__unit"
+    )
     if request.user.is_staff:
         return queryset
     return queryset.filter(store_id__in=user_store_ids(request.user))
@@ -84,11 +90,19 @@ def _stock_balance_queryset(request):
 
 def _apply_stock_balance_filters(request, queryset):
     params = request.query_params
+    category_ids = _parse_int_csv(params.get("category_ids"))
+    unit_ids = _parse_int_csv(params.get("unit_ids"))
+    if category_ids:
+        queryset = queryset.filter(product__category_id__in=category_ids)
+    if unit_ids:
+        queryset = queryset.filter(product__unit_id__in=unit_ids)
+
     text_fields = {
         "product_name": "product__name",
         "product_reference": "product__reference",
         "product_barcode": "product__barcode",
         "category_name": "product__category__name",
+        "unit_name": "product__unit__name",
         "store_name": "store__name",
     }
     for param, field in text_fields.items():
@@ -127,6 +141,18 @@ def _apply_stock_balance_filters(request, queryset):
     return queryset
 
 
+def _parse_int_csv(value):
+    if not value:
+        return []
+    ids = []
+    for item in str(value).split(","):
+        try:
+            ids.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
 def _get_stock_balance_for_user(request, pk):
     try:
         return _stock_balance_base_queryset(request).get(pk=pk)
@@ -153,7 +179,9 @@ def _target_store_for_transfer(request, store_id):
     try:
         store = Store.objects.get(pk=store_id, is_active=True, is_global_stock=False)
     except Store.DoesNotExist as exc:
-        raise ValidationError({"target_store": ["Magasin destination invalide."]}) from exc
+        raise ValidationError(
+            {"target_store": ["Magasin destination invalide."]}
+        ) from exc
     if not user_has_store_access(request.user, store.pk, roles=MANAGEMENT_ROLES):
         raise PermissionDenied("Rôle insuffisant pour ce magasin.")
     return store
@@ -169,7 +197,9 @@ class StockBalanceListCreateView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        return _paginate(request, _stock_balance_queryset(request), StockBalanceSerializer)
+        return _paginate(
+            request, _stock_balance_queryset(request), StockBalanceSerializer
+        )
 
     @staticmethod
     def post(request, *args, **kwargs):
@@ -177,7 +207,9 @@ class StockBalanceListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         _ensure_global_stock_store(serializer.validated_data["store"])
         balance = serializer.save()
-        return Response(StockBalanceSerializer(balance).data, status=status.HTTP_201_CREATED)
+        return Response(
+            StockBalanceSerializer(balance).data, status=status.HTTP_201_CREATED
+        )
 
 
 class StockBalanceDetailEditDeleteView(APIView):
@@ -194,7 +226,9 @@ class StockBalanceDetailEditDeleteView(APIView):
         serializer.is_valid(raise_exception=True)
         next_store = serializer.validated_data.get("store", balance.store)
         _ensure_global_stock_store(next_store)
-        if not user_has_store_access(request.user, next_store.pk, roles=MANAGEMENT_ROLES):
+        if not user_has_store_access(
+            request.user, next_store.pk, roles=MANAGEMENT_ROLES
+        ):
             raise PermissionDenied("Rôle insuffisant pour ce magasin.")
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -207,7 +241,9 @@ class StockBalanceDetailEditDeleteView(APIView):
         next_store = serializer.validated_data.get("store", balance.store)
         if set(request.data.keys()) - {"min_stock"}:
             _ensure_global_stock_store(next_store)
-        if not user_has_store_access(request.user, next_store.pk, roles=MANAGEMENT_ROLES):
+        if not user_has_store_access(
+            request.user, next_store.pk, roles=MANAGEMENT_ROLES
+        ):
             raise PermissionDenied("Rôle insuffisant pour ce magasin.")
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -238,7 +274,9 @@ class StockAdjustmentView(APIView):
             note=serializer.validated_data.get("note", ""),
             allow_negative=serializer.validated_data.get("allow_negative", False),
         )
-        return Response(StockMovementSerializer(movement).data, status=status.HTTP_201_CREATED)
+        return Response(
+            StockMovementSerializer(movement).data, status=status.HTTP_201_CREATED
+        )
 
 
 class StockThresholdUpdateView(APIView):
@@ -270,7 +308,9 @@ class BulkDeleteStockBalancesView(APIView):
 
         queryset = StockBalance.objects.filter(pk__in=balance_ids)
         if not request.user.is_staff:
-            queryset = queryset.filter(store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES))
+            queryset = queryset.filter(
+                store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES)
+            )
         deleted, _deleted_breakdown = queryset.delete()
         if deleted == 0:
             raise PermissionDenied("Aucun solde stock à supprimer.")
@@ -292,7 +332,9 @@ class StockMovementListView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        return _paginate(request, _stock_movement_queryset(request), StockMovementSerializer)
+        return _paginate(
+            request, _stock_movement_queryset(request), StockMovementSerializer
+        )
 
 
 class StockMovementDetailView(APIView):
@@ -304,7 +346,9 @@ class StockMovementDetailView(APIView):
             movement = _stock_movement_queryset(request).get(pk=pk)
         except StockMovement.DoesNotExist:
             raise Http404(_("Aucun mouvement stock ne correspond à la requête."))
-        return Response(StockMovementSerializer(movement).data, status=status.HTTP_200_OK)
+        return Response(
+            StockMovementSerializer(movement).data, status=status.HTTP_200_OK
+        )
 
 
 def _stock_transfer_queryset(request):
@@ -340,9 +384,7 @@ def _stock_transfer_queryset(request):
     if status_value:
         queryset = queryset.filter(
             status__in=[
-                item.strip()
-                for item in str(status_value).split(",")
-                if item.strip()
+                item.strip() for item in str(status_value).split(",") if item.strip()
             ]
         )
     return queryset
@@ -390,11 +432,15 @@ class StockTransferListCreateView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        return _paginate(request, _stock_transfer_queryset(request), StockTransferSerializer)
+        return _paginate(
+            request, _stock_transfer_queryset(request), StockTransferSerializer
+        )
 
     @staticmethod
     def post(request, *args, **kwargs):
-        source_store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
+        source_store = get_global_stock_store_from_request(
+            request, roles=MANAGEMENT_ROLES
+        )
         serializer = StockTransferCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_store = _target_store_for_transfer(
@@ -427,7 +473,9 @@ class StockTransferDetailEditDeleteView(APIView):
         _ensure_store_management_access(request.user, transfer.source_store_id)
         _ensure_global_stock_store(transfer.source_store)
         if transfer.status == StockTransfer.Statuses.VALIDATED:
-            raise ValidationError({"status": ["Un transfert validé ne peut plus être modifié."]})
+            raise ValidationError(
+                {"status": ["Un transfert validé ne peut plus être modifié."]}
+            )
         serializer = StockTransferCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_store = _target_store_for_transfer(
@@ -455,13 +503,17 @@ class StockTransferDetailEditDeleteView(APIView):
             transfer.status = StockTransfer.Statuses.DRAFT
             transfer.save(update_fields=["status", "date_updated"])
             transfer = validate_stock_transfer(transfer=transfer, user=request.user)
-        return Response(StockTransferSerializer(transfer).data, status=status.HTTP_200_OK)
+        return Response(
+            StockTransferSerializer(transfer).data, status=status.HTTP_200_OK
+        )
 
     def delete(self, request, pk, *args, **kwargs):
         transfer = _get_stock_transfer_for_user(request, pk)
         _ensure_store_management_access(request.user, transfer.source_store_id)
         if transfer.status == StockTransfer.Statuses.VALIDATED:
-            raise ValidationError({"status": ["Un transfert validé ne peut pas être supprimé."]})
+            raise ValidationError(
+                {"status": ["Un transfert validé ne peut pas être supprimé."]}
+            )
         transfer.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -474,7 +526,9 @@ class StockTransferValidateView(APIView):
         transfer = _get_stock_transfer_for_user(request, pk)
         _ensure_store_management_access(request.user, transfer.source_store_id)
         transfer = validate_stock_transfer(transfer=transfer, user=request.user)
-        return Response(StockTransferSerializer(transfer).data, status=status.HTTP_200_OK)
+        return Response(
+            StockTransferSerializer(transfer).data, status=status.HTTP_200_OK
+        )
 
 
 class BulkDeleteStockTransfersView(APIView):
@@ -499,7 +553,9 @@ class BulkDeleteStockTransfersView(APIView):
 
 
 def _purchase_queryset(request):
-    queryset = Purchase.objects.select_related("store", "created_by", "received_by").prefetch_related(
+    queryset = Purchase.objects.select_related(
+        "store", "created_by", "received_by"
+    ).prefetch_related(
         "lines",
         "lines__product",
     )
@@ -522,7 +578,13 @@ def _purchase_queryset(request):
     for field in ("status",):
         value = request.query_params.get(field)
         if value:
-            queryset = queryset.filter(**{f"{field}__in": [item.strip() for item in str(value).split(",") if item.strip()]})
+            queryset = queryset.filter(
+                **{
+                    f"{field}__in": [
+                        item.strip() for item in str(value).split(",") if item.strip()
+                    ]
+                }
+            )
 
     date_after = request.query_params.get("purchase_date_after")
     date_before = request.query_params.get("purchase_date_before")
@@ -592,20 +654,27 @@ class PurchaseListCreateView(APIView):
             user=request.user,
             data=dict(serializer.validated_data),
         )
-        return Response(PurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED)
+        return Response(
+            PurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED
+        )
 
 
 class PurchaseDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(PurchaseSerializer(_get_purchase_for_user(request, pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            PurchaseSerializer(_get_purchase_for_user(request, pk)).data,
+            status=status.HTTP_200_OK,
+        )
 
     def put(self, request, pk, *args, **kwargs):
         purchase = _get_purchase_for_user(request, pk)
         _ensure_store_management_access(request.user, purchase.store_id)
         if purchase.status == Purchase.Statuses.RECEIVED:
-            raise ValidationError({"status": ["Un achat réceptionné ne peut plus être modifié."]})
+            raise ValidationError(
+                {"status": ["Un achat réceptionné ne peut plus être modifié."]}
+            )
         serializer = PurchaseCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
@@ -641,7 +710,9 @@ class PurchaseDetailEditDeleteView(APIView):
         purchase = _get_purchase_for_user(request, pk)
         _ensure_store_management_access(request.user, purchase.store_id)
         if purchase.status == Purchase.Statuses.RECEIVED:
-            raise ValidationError({"status": ["Un achat réceptionné ne peut pas être supprimé."]})
+            raise ValidationError(
+                {"status": ["Un achat réceptionné ne peut pas être supprimé."]}
+            )
         purchase.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -665,9 +736,13 @@ class BulkDeletePurchasesView(APIView):
         ids = request.data.get("ids")
         if not ids or not isinstance(ids, list):
             raise ValidationError({"ids": "Une liste d'identifiants est requise."})
-        queryset = Purchase.objects.filter(pk__in=ids).exclude(status=Purchase.Statuses.RECEIVED)
+        queryset = Purchase.objects.filter(pk__in=ids).exclude(
+            status=Purchase.Statuses.RECEIVED
+        )
         if not request.user.is_staff:
-            queryset = queryset.filter(store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES))
+            queryset = queryset.filter(
+                store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES)
+            )
         deleted, _deleted_breakdown = queryset.delete()
         if deleted == 0:
             raise PermissionDenied("Aucun achat à supprimer.")
@@ -675,7 +750,9 @@ class BulkDeletePurchasesView(APIView):
 
 
 def _inventory_queryset(request):
-    queryset = InventorySession.objects.select_related("store", "created_by", "validated_by").prefetch_related(
+    queryset = InventorySession.objects.select_related(
+        "store", "created_by", "validated_by"
+    ).prefetch_related(
         "lines",
         "lines__product",
     )
@@ -697,7 +774,11 @@ def _inventory_queryset(request):
 
     status_value = request.query_params.get("status")
     if status_value:
-        queryset = queryset.filter(status__in=[item.strip() for item in str(status_value).split(",") if item.strip()])
+        queryset = queryset.filter(
+            status__in=[
+                item.strip() for item in str(status_value).split(",") if item.strip()
+            ]
+        )
     return queryset
 
 
@@ -753,7 +834,9 @@ class InventorySessionListCreateView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        return _paginate(request, _inventory_queryset(request), InventorySessionSerializer)
+        return _paginate(
+            request, _inventory_queryset(request), InventorySessionSerializer
+        )
 
     @staticmethod
     def post(request, *args, **kwargs):
@@ -765,20 +848,27 @@ class InventorySessionListCreateView(APIView):
             user=request.user,
             data=dict(serializer.validated_data),
         )
-        return Response(InventorySessionSerializer(session).data, status=status.HTTP_201_CREATED)
+        return Response(
+            InventorySessionSerializer(session).data, status=status.HTTP_201_CREATED
+        )
 
 
 class InventorySessionDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(InventorySessionSerializer(_get_inventory_for_user(request, pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            InventorySessionSerializer(_get_inventory_for_user(request, pk)).data,
+            status=status.HTTP_200_OK,
+        )
 
     def put(self, request, pk, *args, **kwargs):
         session = _get_inventory_for_user(request, pk)
         _ensure_store_management_access(request.user, session.store_id)
         if session.status == InventorySession.Statuses.VALIDATED:
-            raise ValidationError({"status": ["Un inventaire validé ne peut plus être modifié."]})
+            raise ValidationError(
+                {"status": ["Un inventaire validé ne peut plus être modifié."]}
+            )
         serializer = InventorySessionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
@@ -788,19 +878,31 @@ class InventorySessionDetailEditDeleteView(APIView):
             should_validate = data.get("status") == InventorySession.Statuses.VALIDATED
             session.code = data.get("code", session.code)
             session.title = data.get("title", session.title)
-            session.inventory_date = data.get("inventory_date") or session.inventory_date
-            session.status = InventorySession.Statuses.DRAFT if should_validate else data.get("status", InventorySession.Statuses.DRAFT)
+            session.inventory_date = (
+                data.get("inventory_date") or session.inventory_date
+            )
+            session.status = (
+                InventorySession.Statuses.DRAFT
+                if should_validate
+                else data.get("status", InventorySession.Statuses.DRAFT)
+            )
             session.note = data.get("note", "")
             session.save()
             for line_data in lines_data:
                 try:
-                    product = Product.objects.get(pk=line_data["product"], is_active=True)
+                    product = Product.objects.get(
+                        pk=line_data["product"], is_active=True
+                    )
                 except Product.DoesNotExist as exc:
-                    raise ValidationError({"product": ["Article introuvable."]}) from exc
+                    raise ValidationError(
+                        {"product": ["Article introuvable."]}
+                    ) from exc
                 expected_quantity = line_data.get("expected_quantity")
                 if expected_quantity is None:
                     expected_quantity = (
-                        StockBalance.objects.filter(store=session.store, product=product)
+                        StockBalance.objects.filter(
+                            store=session.store, product=product
+                        )
                         .values_list("quantity", flat=True)
                         .first()
                         or 0
@@ -814,13 +916,17 @@ class InventorySessionDetailEditDeleteView(APIView):
                 )
             if should_validate:
                 session = validate_inventory_session(session=session, user=request.user)
-        return Response(InventorySessionSerializer(session).data, status=status.HTTP_200_OK)
+        return Response(
+            InventorySessionSerializer(session).data, status=status.HTTP_200_OK
+        )
 
     def delete(self, request, pk, *args, **kwargs):
         session = _get_inventory_for_user(request, pk)
         _ensure_store_management_access(request.user, session.store_id)
         if session.status == InventorySession.Statuses.VALIDATED:
-            raise ValidationError({"status": ["Un inventaire validé ne peut pas être supprimé."]})
+            raise ValidationError(
+                {"status": ["Un inventaire validé ne peut pas être supprimé."]}
+            )
         session.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -833,7 +939,9 @@ class InventorySessionValidateView(APIView):
         session = _get_inventory_for_user(request, pk)
         _ensure_store_management_access(request.user, session.store_id)
         session = validate_inventory_session(session=session, user=request.user)
-        return Response(InventorySessionSerializer(session).data, status=status.HTTP_200_OK)
+        return Response(
+            InventorySessionSerializer(session).data, status=status.HTTP_200_OK
+        )
 
 
 class BulkDeleteInventorySessionsView(APIView):
@@ -844,9 +952,13 @@ class BulkDeleteInventorySessionsView(APIView):
         ids = request.data.get("ids")
         if not ids or not isinstance(ids, list):
             raise ValidationError({"ids": "Une liste d'identifiants est requise."})
-        queryset = InventorySession.objects.filter(pk__in=ids).exclude(status=InventorySession.Statuses.VALIDATED)
+        queryset = InventorySession.objects.filter(pk__in=ids).exclude(
+            status=InventorySession.Statuses.VALIDATED
+        )
         if not request.user.is_staff:
-            queryset = queryset.filter(store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES))
+            queryset = queryset.filter(
+                store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES)
+            )
         deleted, _deleted_breakdown = queryset.delete()
         if deleted == 0:
             raise PermissionDenied("Aucun inventaire à supprimer.")

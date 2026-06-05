@@ -108,6 +108,13 @@ def _product_queryset(request):
 
 def _apply_product_filters(request, queryset):
     params = request.query_params
+    category_ids = _parse_int_csv(params.get("category_ids"))
+    unit_ids = _parse_int_csv(params.get("unit_ids"))
+    if category_ids:
+        queryset = queryset.filter(category_id__in=category_ids)
+    if unit_ids:
+        queryset = queryset.filter(unit_id__in=unit_ids)
+
     text_fields = {
         "reference": "reference",
         "barcode": "barcode",
@@ -163,6 +170,18 @@ def _apply_product_filters(request, queryset):
         queryset = queryset.filter(expiration_date__lte=expiration_before)
 
     return queryset
+
+
+def _parse_int_csv(value):
+    if not value:
+        return []
+    ids = []
+    for item in str(value).split(","):
+        try:
+            ids.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return ids
 
 
 def _ensure_product_management_access(request):

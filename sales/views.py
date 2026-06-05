@@ -87,14 +87,19 @@ class CustomerListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         _ensure_store_write_access(request.user, serializer.validated_data["store"].pk)
         customer = serializer.save()
-        return Response(CustomerSerializer(customer).data, status=status.HTTP_201_CREATED)
+        return Response(
+            CustomerSerializer(customer).data, status=status.HTTP_201_CREATED
+        )
 
 
 class CustomerDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(CustomerSerializer(_get_customer_for_user(request, pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            CustomerSerializer(_get_customer_for_user(request, pk)).data,
+            status=status.HTTP_200_OK,
+        )
 
     def put(self, request, pk, *args, **kwargs):
         customer = _get_customer_for_user(request, pk)
@@ -140,7 +145,9 @@ class PaymentModeListCreateView(APIView):
         serializer = PaymentModeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payment_mode = serializer.save()
-        return Response(PaymentModeSerializer(payment_mode).data, status=status.HTTP_201_CREATED)
+        return Response(
+            PaymentModeSerializer(payment_mode).data, status=status.HTTP_201_CREATED
+        )
 
 
 class PaymentModeDetailEditDeleteView(APIView):
@@ -159,7 +166,9 @@ class PaymentModeDetailEditDeleteView(APIView):
             raise Http404(_("Aucun mode de paiement ne correspond à la requête."))
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(PaymentModeSerializer(self.get_object(pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            PaymentModeSerializer(self.get_object(pk)).data, status=status.HTTP_200_OK
+        )
 
     def put(self, request, pk, *args, **kwargs):
         serializer = PaymentModeSerializer(self.get_object(pk), data=request.data)
@@ -168,7 +177,9 @@ class PaymentModeDetailEditDeleteView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk, *args, **kwargs):
-        serializer = PaymentModeSerializer(self.get_object(pk), data=request.data, partial=True)
+        serializer = PaymentModeSerializer(
+            self.get_object(pk), data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -202,9 +213,7 @@ def _promotion_queryset(request):
     if status_value:
         queryset = queryset.filter(
             status__in=[
-                item.strip()
-                for item in str(status_value).split(",")
-                if item.strip()
+                item.strip() for item in str(status_value).split(",") if item.strip()
             ]
         )
     return queryset
@@ -230,7 +239,9 @@ def _create_promotion_from_validated_data(*, store, user, data):
         created_by=user if getattr(user, "is_authenticated", False) else None,
     )
     for line_data in lines_data:
-        product = Product.objects.filter(pk=line_data["product"], is_active=True).first()
+        product = Product.objects.filter(
+            pk=line_data["product"], is_active=True
+        ).first()
         if not product:
             raise ValidationError({"product": ["Article introuvable."]})
         PromotionLine.objects.create(
@@ -291,7 +302,9 @@ class PromotionDetailEditDeleteView(APIView):
         promotion.save()
         promotion.lines.all().delete()
         for line_data in lines_data:
-            product = Product.objects.filter(pk=line_data["product"], is_active=True).first()
+            product = Product.objects.filter(
+                pk=line_data["product"], is_active=True
+            ).first()
             if not product:
                 raise ValidationError({"product": ["Article introuvable."]})
             PromotionLine.objects.create(
@@ -308,10 +321,14 @@ class PromotionDetailEditDeleteView(APIView):
         if set(request.data.keys()) == {"status"}:
             status_value = request.data.get("status")
             if status_value not in Promotion.Statuses.values:
-                return Response({"status": ["Statut invalide."]}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"status": ["Statut invalide."]}, status=status.HTTP_400_BAD_REQUEST
+                )
             promotion.status = status_value
             promotion.save(update_fields=["status", "date_updated"])
-            return Response(PromotionSerializer(promotion).data, status=status.HTTP_200_OK)
+            return Response(
+                PromotionSerializer(promotion).data, status=status.HTTP_200_OK
+            )
         serializer = PromotionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
@@ -325,7 +342,9 @@ class PromotionDetailEditDeleteView(APIView):
         promotion.save()
         promotion.lines.all().delete()
         for line_data in lines_data:
-            product = Product.objects.filter(pk=line_data["product"], is_active=True).first()
+            product = Product.objects.filter(
+                pk=line_data["product"], is_active=True
+            ).first()
             if not product:
                 raise ValidationError({"product": ["Article introuvable."]})
             PromotionLine.objects.create(
@@ -377,6 +396,12 @@ def _apply_sale_filters(request, queryset):
         values = split_csv_query_value(params.get(field))
         if values:
             queryset = queryset.filter(**{f"{field}__in": values})
+
+    payment_mode_values = split_csv_query_value(
+        params.get("payment_mode") or params.get("payment_mode_ids")
+    )
+    if payment_mode_values:
+        queryset = queryset.filter(payment_mode_id__in=payment_mode_values)
 
     text_fields = {
         "store_name": "store__name",
@@ -456,7 +481,9 @@ class SaleListCreateView(APIView):
         store = get_store_from_request(request, roles=WRITE_ROLES)
         serializer = SaleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        sale = create_sale(store=store, user=request.user, validated_data=serializer.validated_data)
+        sale = create_sale(
+            store=store, user=request.user, validated_data=serializer.validated_data
+        )
         return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
 
 
@@ -464,7 +491,10 @@ class SaleDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(SaleSerializer(_get_sale_for_user(request, pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            SaleSerializer(_get_sale_for_user(request, pk)).data,
+            status=status.HTTP_200_OK,
+        )
 
     def put(self, request, pk, *args, **kwargs):
         sale = _get_sale_for_user(request, pk)
@@ -497,7 +527,10 @@ class SaleSyncOfflineView(APIView):
         store = get_store_from_request(request, roles=WRITE_ROLES)
         payload = request.data.get("sales", [])
         if not isinstance(payload, list):
-            return Response({"detail": "sales doit être une liste."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "sales doit être une liste."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         results = []
         errors = []
         for index, sale_payload in enumerate(payload):
@@ -506,11 +539,17 @@ class SaleSyncOfflineView(APIView):
                 errors.append({"index": index, "errors": serializer.errors})
                 continue
             try:
-                sale = create_sale(store=store, user=request.user, validated_data=serializer.validated_data)
+                sale = create_sale(
+                    store=store,
+                    user=request.user,
+                    validated_data=serializer.validated_data,
+                )
                 results.append(SaleSerializer(sale).data)
             except Exception as exc:
                 errors.append({"index": index, "errors": str(exc)})
-        return Response({"results": results, "errors": errors}, status=status.HTTP_200_OK)
+        return Response(
+            {"results": results, "errors": errors}, status=status.HTTP_200_OK
+        )
 
 
 class SaleVoidView(APIView):
@@ -537,10 +576,18 @@ class SaleDashboardView(APIView):
     def get(request, *args, **kwargs):
         store = get_store_from_request(request)
         today = timezone.localdate()
-        sales_qs = Sale.objects.filter(store=store, status=Sale.Statuses.CONFIRMED, date_created__date=today)
-        aggregate = sales_qs.aggregate(sales_count=Count("id"), total_sales=Sum("total"))
+        sales_qs = Sale.objects.filter(
+            store=store, status=Sale.Statuses.CONFIRMED, date_created__date=today
+        )
+        aggregate = sales_qs.aggregate(
+            sales_count=Count("id"), total_sales=Sum("total")
+        )
         low_stock_count = sum(
-            1 for balance in StockBalance.objects.filter(store=store).select_related("product") if balance.is_low_stock
+            1
+            for balance in StockBalance.objects.filter(store=store).select_related(
+                "product"
+            )
+            if balance.is_low_stock
         )
         data = {
             "sales_count": aggregate["sales_count"] or 0,

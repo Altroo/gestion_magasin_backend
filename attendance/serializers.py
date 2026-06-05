@@ -40,6 +40,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
             "break_start",
             "break_end",
             "clock_out",
+            "shift",
             "hours_worked",
             "delay_minutes",
             "status",
@@ -50,7 +51,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
             "date_created",
             "date_updated",
         ]
-        read_only_fields = ["created_by", "date_created", "date_updated"]
+        read_only_fields = ["hours_worked", "delay_minutes", "created_by", "date_created", "date_updated"]
 
 
 class AttendanceImportBatchSerializer(serializers.ModelSerializer):
@@ -74,4 +75,3 @@ class AttendanceImportBatchSerializer(serializers.ModelSerializer):
             "date_created",
         ]
         read_only_fields = ["date_created", "imported_count", "skipped_count", "imported_by"]
-

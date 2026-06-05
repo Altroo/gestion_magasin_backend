@@ -37,12 +37,20 @@ def create_store_setup(role_code=Role.Codes.RESPONSABLE):
     return user, store, category
 
 
-def create_product(reference, name, category, counter_price="25.00", is_active=True):
+def create_product(
+    reference,
+    name,
+    category,
+    counter_price="25.00",
+    is_active=True,
+    unit=None,
+):
     return Product.objects.create(
         reference=reference,
         barcode=reference,
         name=name,
         category=category,
+        unit=unit or ProductUnit.default(),
         purchase_price=Decimal("10.00"),
         counter_price=Decimal(counter_price),
         default_stock_alert=Decimal("2.000"),
@@ -52,8 +60,9 @@ def create_product(reference, name, category, counter_price="25.00", is_active=T
 
 def test_product_list_filters_by_text_boolean_and_numeric_fields():
     user, store, category = create_store_setup()
+    unit = ProductUnit.objects.create(code="piece-test", name="Pièce test")
     matching = create_product(
-        "ART-LOW", "Article stock bas", category, counter_price="18.00"
+        "ART-LOW", "Article stock bas", category, counter_price="18.00", unit=unit
     )
     other = create_product(
         "ART-HIGH", "Article reserve", category, counter_price="40.00", is_active=False
@@ -79,6 +88,8 @@ def test_product_list_filters_by_text_boolean_and_numeric_fields():
             "name__icontains": "stock",
             "is_active": "true",
             "counter_price__lt": "20",
+            "category_ids": str(category.pk),
+            "unit_ids": str(unit.pk),
         },
     )
 

@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from catalog.models import Category, Product
+from catalog.models import Category, Product, ProductUnit
 from stock.models import (
     InventorySession,
     Purchase,
@@ -43,12 +43,13 @@ def create_store_setup(role_code=Role.Codes.RESPONSABLE, is_global_stock=False):
     return user, store, category
 
 
-def create_balance(store, category, reference, name, quantity, min_stock):
+def create_balance(store, category, reference, name, quantity, min_stock, unit=None):
     product = Product.objects.create(
         reference=reference,
         barcode=reference,
         name=name,
         category=category,
+        unit=unit or ProductUnit.default(),
         purchase_price=Decimal("10.00"),
         counter_price=Decimal("25.00"),
         default_stock_alert=Decimal("2.000"),
@@ -64,7 +65,16 @@ def create_balance(store, category, reference, name, quantity, min_stock):
 
 def test_stock_list_filters_low_stock_and_numeric_quantity():
     user, store, category = create_store_setup()
-    low_balance = create_balance(store, category, "STK-LOW", "Article stock bas", "1.000", "2.000")
+    unit = ProductUnit.objects.create(code="stock-piece-test", name="Pièce stock test")
+    low_balance = create_balance(
+        store,
+        category,
+        "STK-LOW",
+        "Article stock bas",
+        "1.000",
+        "2.000",
+        unit=unit,
+    )
     create_balance(store, category, "STK-OK", "Article reserve", "12.000", "4.000")
     client = authenticated_client(user)
 
@@ -74,18 +84,25 @@ def test_stock_list_filters_low_stock_and_numeric_quantity():
             "store": store.pk,
             "low": "true",
             "quantity__lte": "2",
+            "category_ids": str(category.pk),
+            "unit_ids": str(unit.pk),
         },
     )
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == low_balance.pk
+    assert response.data["results"][0]["unit_name"] == unit.name
 
 
 def test_stock_list_accepts_comma_separated_low_filter_values():
     user, store, category = create_store_setup()
-    low_balance = create_balance(store, category, "STK-CSV-LOW", "Article stock bas", "1.000", "2.000")
-    ok_balance = create_balance(store, category, "STK-CSV-OK", "Article reserve", "12.000", "4.000")
+    low_balance = create_balance(
+        store, category, "STK-CSV-LOW", "Article stock bas", "1.000", "2.000"
+    )
+    ok_balance = create_balance(
+        store, category, "STK-CSV-OK", "Article reserve", "12.000", "4.000"
+    )
     client = authenticated_client(user)
 
     response = client.get(
@@ -97,12 +114,17 @@ def test_stock_list_accepts_comma_separated_low_filter_values():
     )
 
     assert response.status_code == status.HTTP_200_OK
-    assert {item["id"] for item in response.data["results"]} == {low_balance.pk, ok_balance.pk}
+    assert {item["id"] for item in response.data["results"]} == {
+        low_balance.pk,
+        ok_balance.pk,
+    }
 
 
 def test_stock_threshold_update_requires_management_role():
     user, store, category = create_store_setup(role_code=Role.Codes.LECTURE)
-    balance = create_balance(store, category, "STK-READ", "Article lecture", "5.000", "2.000")
+    balance = create_balance(
+        store, category, "STK-READ", "Article lecture", "5.000", "2.000"
+    )
     client = authenticated_client(user)
 
     response = client.patch(
@@ -118,7 +140,9 @@ def test_stock_threshold_update_requires_management_role():
 
 def test_stock_threshold_update_for_responsable():
     user, store, category = create_store_setup()
-    balance = create_balance(store, category, "STK-EDIT", "Article edit", "5.000", "2.000")
+    balance = create_balance(
+        store, category, "STK-EDIT", "Article edit", "5.000", "2.000"
+    )
     client = authenticated_client(user)
 
     response = client.patch(
@@ -134,7 +158,9 @@ def test_stock_threshold_update_for_responsable():
 
 def test_stock_bulk_delete_removes_selected_balance_for_responsable():
     user, store, category = create_store_setup()
-    balance = create_balance(store, category, "STK-BULK", "Article bulk", "5.000", "2.000")
+    balance = create_balance(
+        store, category, "STK-BULK", "Article bulk", "5.000", "2.000"
+    )
     client = authenticated_client(user)
 
     response = client.delete(
@@ -149,7 +175,9 @@ def test_stock_bulk_delete_removes_selected_balance_for_responsable():
 
 def test_stock_adjustment_adds_stock_for_responsable_store():
     user, store, category = create_store_setup(is_global_stock=False)
-    balance = create_balance(store, category, "STK-ADD", "Article ajout", "5.000", "2.000")
+    balance = create_balance(
+        store, category, "STK-ADD", "Article ajout", "5.000", "2.000"
+    )
     client = authenticated_client(user)
 
     response = client.post(
@@ -177,7 +205,9 @@ def test_stock_adjustment_adds_stock_for_responsable_store():
 
 def test_received_purchase_adds_stock_and_purchase_movement():
     user, store, category = create_store_setup(is_global_stock=True)
-    product = create_balance(store, category, "PUR-001", "Article achat", "2.000", "1.000").product
+    product = create_balance(
+        store, category, "PUR-001", "Article achat", "2.000", "1.000"
+    ).product
     client = authenticated_client(user)
 
     response = client.post(
@@ -187,7 +217,9 @@ def test_received_purchase_adds_stock_and_purchase_movement():
             "supplier_name": "Fournisseur test",
             "reference": "BL-001",
             "status": "received",
-            "lines": [{"product": product.pk, "quantity": "3.000", "unit_cost": "12.50"}],
+            "lines": [
+                {"product": product.pk, "quantity": "3.000", "unit_cost": "12.50"}
+            ],
         },
         format="json",
     )
@@ -208,7 +240,9 @@ def test_received_purchase_adds_stock_and_purchase_movement():
 
 def test_validated_transfer_moves_stock_from_mbr_to_store():
     user, source_store, category = create_store_setup(is_global_stock=True)
-    target_store = Store.objects.create(code="stock-target", name="STOCK TARGET", is_active=True)
+    target_store = Store.objects.create(
+        code="stock-target", name="STOCK TARGET", is_active=True
+    )
     role = Role.objects.get(code=Role.Codes.RESPONSABLE)
     StoreMembership.objects.create(user=user, store=target_store, role=role)
     source_balance = create_balance(
@@ -259,7 +293,9 @@ def test_validated_transfer_moves_stock_from_mbr_to_store():
 
 def test_validated_inventory_adjusts_stock_to_counted_quantity():
     user, store, category = create_store_setup()
-    balance = create_balance(store, category, "INV-001", "Article inventaire", "8.000", "1.000")
+    balance = create_balance(
+        store, category, "INV-001", "Article inventaire", "8.000", "1.000"
+    )
     client = authenticated_client(user)
 
     response = client.post(
@@ -296,7 +332,9 @@ def test_validated_inventory_adjusts_stock_to_counted_quantity():
 
 def test_draft_inventory_can_be_edited_before_validation():
     user, store, category = create_store_setup()
-    balance = create_balance(store, category, "INV-EDIT", "Article inventaire edit", "8.000", "1.000")
+    balance = create_balance(
+        store, category, "INV-EDIT", "Article inventaire edit", "8.000", "1.000"
+    )
     client = authenticated_client(user)
     create_response = client.post(
         "/api/stock/inventory/",
@@ -344,3 +382,56 @@ def test_draft_inventory_can_be_edited_before_validation():
     assert session.status == InventorySession.Statuses.DRAFT
     assert line.counted_quantity == Decimal("7.000")
     assert line.note == "Comptage corrige"
+
+
+def test_validated_inventory_cannot_be_edited_or_deleted():
+    user, store, category = create_store_setup()
+    balance = create_balance(
+        store, category, "INV-LOCK", "Article inventaire verrouille", "8.000", "1.000"
+    )
+    client = authenticated_client(user)
+    create_response = client.post(
+        "/api/stock/inventory/",
+        {
+            "store": store.pk,
+            "code": "INV-LOCK",
+            "title": "Inventaire valide",
+            "status": "validated",
+            "lines": [
+                {
+                    "product": balance.product.pk,
+                    "expected_quantity": "8.000",
+                    "counted_quantity": "6.000",
+                }
+            ],
+        },
+        format="json",
+    )
+    session = InventorySession.objects.get(pk=create_response.data["id"])
+
+    edit_response = client.put(
+        f"/api/stock/inventory/{session.pk}/",
+        {
+            "store": store.pk,
+            "code": "INV-LOCK-UPDATED",
+            "title": "Inventaire modifie",
+            "status": "draft",
+            "lines": [
+                {
+                    "product": balance.product.pk,
+                    "expected_quantity": "8.000",
+                    "counted_quantity": "5.000",
+                }
+            ],
+        },
+        format="json",
+    )
+    delete_response = client.delete(f"/api/stock/inventory/{session.pk}/")
+
+    assert edit_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert delete_response.status_code == status.HTTP_400_BAD_REQUEST
+    session.refresh_from_db()
+    balance.refresh_from_db()
+    assert session.status == InventorySession.Statuses.VALIDATED
+    assert session.code == "INV-LOCK"
+    assert balance.quantity == Decimal("6.000")

@@ -1,5 +1,4 @@
-from datetime import date, datetime, time, timedelta
-from decimal import Decimal
+from datetime import date, datetime, time
 from typing import BinaryIO
 
 from django.db import transaction
@@ -47,23 +46,13 @@ def _time_or_none(value) -> time | None:
     return None
 
 
-def _hours(clock_in, break_start, break_end, clock_out) -> Decimal:
-    if not clock_in or not clock_out:
-        return Decimal("0")
-    base_date = date(2026, 1, 1)
-    start = datetime.combine(base_date, clock_in)
-    end = datetime.combine(base_date, clock_out)
-    if end < start:
-        end += timedelta(days=1)
-    pause = timedelta()
-    if break_start and break_end:
-        pause_start = datetime.combine(base_date, break_start)
-        pause_end = datetime.combine(base_date, break_end)
-        if pause_end < pause_start:
-            pause_end += timedelta(days=1)
-        pause = pause_end - pause_start
-    hours = Decimal(str(round(((end - start) - pause).total_seconds() / 3600, 2)))
-    return max(hours, Decimal("0"))
+def _shift_or_default(value, status) -> str:
+    text = _clean(value).lower()
+    if status == AttendanceRecord.Statuses.OFF or text == "off":
+        return AttendanceRecord.Shifts.OFF
+    if "evening" in text or "soir" in text:
+        return AttendanceRecord.Shifts.EVENING
+    return AttendanceRecord.Shifts.MORNING
 
 
 def _find_header_row(sheet) -> int:
@@ -105,6 +94,7 @@ def import_attendance_from_workbook(
     break_start_idx = idx("début", "debut", "pause 1")
     break_end_idx = idx("fin pause", "pause 2")
     out_idx = idx("sortie")
+    shift_idx = idx("shift")
     obs_idx = idx("observ")
 
     batch = AttendanceImportBatch.objects.create(
@@ -132,6 +122,7 @@ def import_attendance_from_workbook(
         status = AttendanceRecord.Statuses.OFF if _clean(raw_in).lower() == "off" else AttendanceRecord.Statuses.PRESENT
         if status == AttendanceRecord.Statuses.PRESENT and not clock_in and not clock_out:
             status = AttendanceRecord.Statuses.ABSENT
+        shift = _shift_or_default(row[shift_idx] if shift_idx is not None else None, status)
 
         employee, _ = Employee.objects.get_or_create(
             store=store,
@@ -147,7 +138,7 @@ def import_attendance_from_workbook(
                 "break_start": break_start,
                 "break_end": break_end,
                 "clock_out": clock_out,
-                "hours_worked": _hours(clock_in, break_start, break_end, clock_out),
+                "shift": shift,
                 "status": status,
                 "responsible": responsible,
                 "observations": _clean(row[obs_idx]) if obs_idx is not None else "",
