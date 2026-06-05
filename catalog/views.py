@@ -29,7 +29,9 @@ from store.permissions import (
 def _paginate(request, queryset, serializer_class, context=None):
     paginator = CustomPagination()
     page = paginator.paginate_queryset(queryset, request)
-    serializer = serializer_class(page, many=True, context=context or {"request": request})
+    serializer = serializer_class(
+        page, many=True, context=context or {"request": request}
+    )
     return paginator.get_paginated_response(serializer.data)
 
 
@@ -37,7 +39,9 @@ def _category_queryset(request):
     queryset = Category.objects.all()
     search = request.query_params.get("search")
     if search:
-        queryset = queryset.filter(Q(code__icontains=search) | Q(name__icontains=search))
+        queryset = queryset.filter(
+            Q(code__icontains=search) | Q(name__icontains=search)
+        )
 
     for param, field in {"code": "code", "name": "name"}.items():
         for lookup in ("icontains", "istartswith", "iendswith"):
@@ -58,7 +62,9 @@ def _unit_queryset(request):
     queryset = ProductUnit.objects.all()
     search = request.query_params.get("search")
     if search:
-        queryset = queryset.filter(Q(code__icontains=search) | Q(name__icontains=search))
+        queryset = queryset.filter(
+            Q(code__icontains=search) | Q(name__icontains=search)
+        )
 
     for param, field in {"code": "code", "name": "name"}.items():
         for lookup in ("icontains", "istartswith", "iendswith"):
@@ -93,7 +99,9 @@ def _product_queryset(request):
         if request.user.is_staff or int(store_id) in allowed:
             balances = StockBalance.objects.filter(store_id=store_id)
             queryset = queryset.prefetch_related(
-                Prefetch("stock_balances", queryset=balances, to_attr="selected_balances")
+                Prefetch(
+                    "stock_balances", queryset=balances, to_attr="selected_balances"
+                )
             )
     return queryset
 
@@ -166,7 +174,8 @@ def _ensure_product_management_access(request):
 def _product_serializer_context(request):
     return {
         "request": request,
-        "store_id": request.query_params.get("store") or request.query_params.get("store_id"),
+        "store_id": request.query_params.get("store")
+        or request.query_params.get("store_id"),
     }
 
 
@@ -189,7 +198,9 @@ class CategoryListCreateView(APIView):
         serializer = CategorySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         category = serializer.save()
-        return Response(CategorySerializer(category).data, status=status.HTTP_201_CREATED)
+        return Response(
+            CategorySerializer(category).data, status=status.HTTP_201_CREATED
+        )
 
 
 class CategoryDetailEditDeleteView(APIView):
@@ -203,7 +214,9 @@ class CategoryDetailEditDeleteView(APIView):
             raise Http404(_("Aucune famille article ne correspond à la requête."))
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(CategorySerializer(self.get_object(pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            CategorySerializer(self.get_object(pk)).data, status=status.HTTP_200_OK
+        )
 
     def put(self, request, pk, *args, **kwargs):
         category = self.get_object(pk)
@@ -236,7 +249,9 @@ class ProductUnitListCreateView(APIView):
         serializer = ProductUnitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         unit = serializer.save()
-        return Response(ProductUnitSerializer(unit).data, status=status.HTTP_201_CREATED)
+        return Response(
+            ProductUnitSerializer(unit).data, status=status.HTTP_201_CREATED
+        )
 
 
 class ProductUnitDetailEditDeleteView(APIView):
@@ -250,7 +265,9 @@ class ProductUnitDetailEditDeleteView(APIView):
             raise Http404(_("Aucune unité article ne correspond à la requête."))
 
     def get(self, request, pk, *args, **kwargs):
-        return Response(ProductUnitSerializer(self.get_object(pk)).data, status=status.HTTP_200_OK)
+        return Response(
+            ProductUnitSerializer(self.get_object(pk)).data, status=status.HTTP_200_OK
+        )
 
     def put(self, request, pk, *args, **kwargs):
         unit = self.get_object(pk)
@@ -286,11 +303,15 @@ class ProductListCreateView(APIView):
     @staticmethod
     def post(request, *args, **kwargs):
         _ensure_product_management_access(request)
-        serializer = ProductSerializer(data=request.data, context=_product_serializer_context(request))
+        serializer = ProductSerializer(
+            data=request.data, context=_product_serializer_context(request)
+        )
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         return Response(
-            ProductSerializer(product, context=_product_serializer_context(request)).data,
+            ProductSerializer(
+                product, context=_product_serializer_context(request)
+            ).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -299,7 +320,9 @@ class ProductDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk, *args, **kwargs):
-        serializer = ProductSerializer(_get_product(pk), context=_product_serializer_context(request))
+        serializer = ProductSerializer(
+            _get_product(pk), context=_product_serializer_context(request)
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, *args, **kwargs):
@@ -338,7 +361,9 @@ class ProductScanView(APIView):
     def get(request, *args, **kwargs):
         code = request.query_params.get("code", "").strip()
         if not code:
-            return Response({"detail": "Code barre requis."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Code barre requis."}, status=status.HTTP_400_BAD_REQUEST
+            )
         store = get_store_from_request(request)
         product = (
             Product.objects.select_related("category")
@@ -346,8 +371,12 @@ class ProductScanView(APIView):
             .first()
         )
         if not product:
-            return Response({"detail": "Article introuvable."}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ProductSerializer(product, context={"request": request, "store_id": store.pk})
+            return Response(
+                {"detail": "Article introuvable."}, status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = ProductSerializer(
+            product, context={"request": request, "store_id": store.pk}
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -360,14 +389,33 @@ class ProductImportWorkbookView(APIView):
         store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         file_obj = request.FILES.get("file")
         if not file_obj:
-            return Response({"detail": "Fichier requis."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Fichier requis."}, status=status.HTTP_400_BAD_REQUEST
+            )
         batch = import_products_from_workbook(
             file_obj,
             store=store,
             imported_by=request.user,
             file_name=file_obj.name,
         )
-        return Response(ProductImportBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
+        return Response(
+            ProductImportBatchSerializer(batch).data, status=status.HTTP_201_CREATED
+        )
+
+
+class SendCSVExampleEmailView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        from account.tasks import send_csv_example_email
+
+        _ensure_product_management_access(request)
+        send_csv_example_email.apply_async((request.user.pk, request.user.email))
+        return Response(
+            {"message": _("Email envoyé avec succès.")},
+            status=status.HTTP_200_OK,
+        )
 
 
 class BulkDeleteProductsView(APIView):
@@ -383,7 +431,9 @@ class BulkDeleteProductsView(APIView):
             product_ids = [int(item) for item in ids]
         except (TypeError, ValueError):
             raise ValidationError({"ids": "Les identifiants doivent être des entiers."})
-        deleted, _deleted_breakdown = Product.objects.filter(pk__in=product_ids).delete()
+        deleted, _deleted_breakdown = Product.objects.filter(
+            pk__in=product_ids
+        ).delete()
         if deleted == 0:
             raise PermissionDenied("Aucun article à supprimer.")
         return Response({"deleted": deleted}, status=status.HTTP_200_OK)
@@ -401,7 +451,9 @@ class ProductImportBatchListView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        return _paginate(request, _product_import_queryset(request), ProductImportBatchSerializer)
+        return _paginate(
+            request, _product_import_queryset(request), ProductImportBatchSerializer
+        )
 
 
 class ProductImportBatchDetailView(APIView):
@@ -413,4 +465,6 @@ class ProductImportBatchDetailView(APIView):
             batch = _product_import_queryset(request).get(pk=pk)
         except ProductImportBatch.DoesNotExist:
             raise Http404(_("Aucun import article ne correspond à la requête."))
-        return Response(ProductImportBatchSerializer(batch).data, status=status.HTTP_200_OK)
+        return Response(
+            ProductImportBatchSerializer(batch).data, status=status.HTTP_200_OK
+        )

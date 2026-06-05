@@ -8,6 +8,7 @@ from channels.layers import get_channel_layer
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files import File
 from django.core.mail import EmailMessage
+from django.template.loader import render_to_string
 
 from account.models import CustomUser
 from gestion_magasin_backend.celery_conf import app
@@ -32,6 +33,100 @@ def send_email(self, user_pk, email_, mail_subject, message, code=None, type_=No
         return
     except Exception as e:
         logger.error(f"Échec de l'envoi de l'e-mail pour l'utilisateur {user_pk} : {e}")
+        raise self.retry(exc=e, countdown=60)
+
+
+@app.task(bind=True, serializer="json", max_retries=3)
+def send_csv_example_email(self, user_pk, email_):
+    """Send the article import guide with CSV and Excel templates attached."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+
+        user = CustomUser.objects.get(pk=user_pk)
+
+        headers = [
+            "Réf",
+            "Désignation",
+            "Famille",
+            "Unité Vente",
+            "P Achat",
+            "P Gros",
+            "P Details",
+            "P Comptoir",
+            "Stock Alert",
+            "Stock",
+            "Date expiration",
+            "Durée",
+        ]
+        sample_row = [
+            "ART-001",
+            "Article exemple",
+            "EAU",
+            "Pièce",
+            "5.00",
+            "6.00",
+            "7.00",
+            "8.00",
+            "10",
+            "50",
+            "2026-12-31",
+            "365",
+        ]
+        csv_content = ";".join(headers) + "\n" + ";".join(sample_row) + "\n"
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Articles"
+        sheet.append(headers)
+        sheet.append(sample_row)
+
+        header_font = Font(bold=True)
+        header_fill = PatternFill(
+            start_color="CCE5FF",
+            end_color="CCE5FF",
+            fill_type="solid",
+        )
+        for cell in sheet[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+
+        for column_cells in sheet.columns:
+            column_letter = column_cells[0].column_letter
+            max_length = max(len(str(cell.value or "")) for cell in column_cells)
+            sheet.column_dimensions[column_letter].width = min(max_length + 2, 50)
+
+        excel_buffer = BytesIO()
+        workbook.save(excel_buffer)
+        excel_content = excel_buffer.getvalue()
+        excel_buffer.close()
+
+        mail_subject = "Guide d'importation des articles - E.B.H Gestion Magasin"
+        message = render_to_string(
+            "import_email_guide.html",
+            {
+                "first_name": user.first_name,
+            },
+        )
+
+        email = EmailMessage(subject=mail_subject, body=message, to=(email_,))
+        email.content_subtype = "html"
+        email.attach("modele_articles.csv", csv_content, "text/csv")
+        email.attach(
+            "modele_articles.xlsx",
+            excel_content,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        email.send(fail_silently=False)
+    except ObjectDoesNotExist:
+        logger.error(
+            f"Utilisateur {user_pk} introuvable pour l'envoi du guide d'importation"
+        )
+        return
+    except Exception as e:
+        logger.error(
+            f"Échec de l'envoi du guide d'importation pour l'utilisateur {user_pk} : {e}"
+        )
         raise self.retry(exc=e, countdown=60)
 
 

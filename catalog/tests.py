@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -21,12 +22,16 @@ def authenticated_client(user):
 
 
 def create_store_setup(role_code=Role.Codes.RESPONSABLE):
-    user = User.objects.create_user(email="catalog@example.com", password="securepass123")
+    user = User.objects.create_user(
+        email="catalog@example.com", password="securepass123"
+    )
     role, _ = Role.objects.get_or_create(
         code=role_code,
         defaults={"name": role_code.title(), "rank": 1},
     )
-    store = Store.objects.create(code="catalog-store", name="CATALOG STORE", is_active=True)
+    store = Store.objects.create(
+        code="catalog-store", name="CATALOG STORE", is_active=True
+    )
     StoreMembership.objects.create(user=user, store=store, role=role)
     category = Category.objects.create(code="catalog-family", name="Catalogue Famille")
     return user, store, category
@@ -47,10 +52,24 @@ def create_product(reference, name, category, counter_price="25.00", is_active=T
 
 def test_product_list_filters_by_text_boolean_and_numeric_fields():
     user, store, category = create_store_setup()
-    matching = create_product("ART-LOW", "Article stock bas", category, counter_price="18.00")
-    other = create_product("ART-HIGH", "Article reserve", category, counter_price="40.00", is_active=False)
-    StockBalance.objects.create(store=store, product=matching, quantity=Decimal("1.000"), min_stock=Decimal("2.000"))
-    StockBalance.objects.create(store=store, product=other, quantity=Decimal("12.000"), min_stock=Decimal("4.000"))
+    matching = create_product(
+        "ART-LOW", "Article stock bas", category, counter_price="18.00"
+    )
+    other = create_product(
+        "ART-HIGH", "Article reserve", category, counter_price="40.00", is_active=False
+    )
+    StockBalance.objects.create(
+        store=store,
+        product=matching,
+        quantity=Decimal("1.000"),
+        min_stock=Decimal("2.000"),
+    )
+    StockBalance.objects.create(
+        store=store,
+        product=other,
+        quantity=Decimal("12.000"),
+        min_stock=Decimal("4.000"),
+    )
     client = authenticated_client(user)
 
     response = client.get(
@@ -71,7 +90,9 @@ def test_product_list_filters_by_text_boolean_and_numeric_fields():
 def test_product_list_accepts_comma_separated_boolean_filters():
     user, store, category = create_store_setup()
     active = create_product("ART-ACTIVE", "Article actif", category, is_active=True)
-    inactive = create_product("ART-INACTIVE", "Article inactif", category, is_active=False)
+    inactive = create_product(
+        "ART-INACTIVE", "Article inactif", category, is_active=False
+    )
     client = authenticated_client(user)
 
     response = client.get(
@@ -143,3 +164,31 @@ def test_product_create_requires_barcode_for_caisse_scan():
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "barcode" in response.data["details"]
+
+
+def test_product_import_guide_email_requires_management_role():
+    user, store, _category = create_store_setup(role_code=Role.Codes.LECTURE)
+    client = authenticated_client(user)
+
+    response = client.post(
+        "/api/catalog/products/send-csv-example-email/",
+        {"store": store.pk},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_product_import_guide_email_schedules_email_for_responsable():
+    user, store, _category = create_store_setup()
+    client = authenticated_client(user)
+
+    with patch("account.tasks.send_csv_example_email.apply_async") as mocked_task:
+        response = client.post(
+            "/api/catalog/products/send-csv-example-email/",
+            {"store": store.pk},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    mocked_task.assert_called_once_with((user.pk, user.email))
