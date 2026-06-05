@@ -147,6 +147,34 @@ def test_stock_bulk_delete_removes_selected_balance_for_responsable():
     assert not StockBalance.objects.filter(pk=balance.pk).exists()
 
 
+def test_stock_adjustment_adds_stock_for_responsable_store():
+    user, store, category = create_store_setup(is_global_stock=False)
+    balance = create_balance(store, category, "STK-ADD", "Article ajout", "5.000", "2.000")
+    client = authenticated_client(user)
+
+    response = client.post(
+        "/api/stock/balances/adjust/",
+        {
+            "store": store.pk,
+            "product": balance.product.pk,
+            "quantity": "50.000",
+            "movement_type": StockMovement.Types.ADJUSTMENT,
+            "note": "Achat manuel magasin",
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    balance.refresh_from_db()
+    assert balance.quantity == Decimal("55.000")
+    assert StockMovement.objects.filter(
+        store=store,
+        product=balance.product,
+        movement_type=StockMovement.Types.ADJUSTMENT,
+        quantity=Decimal("50.000"),
+    ).exists()
+
+
 def test_received_purchase_adds_stock_and_purchase_movement():
     user, store, category = create_store_setup(is_global_stock=True)
     product = create_balance(store, category, "PUR-001", "Article achat", "2.000", "1.000").product

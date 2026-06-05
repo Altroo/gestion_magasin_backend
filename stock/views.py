@@ -224,7 +224,7 @@ class StockAdjustmentView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
-        store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
+        store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
         serializer = StockAdjustmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         product = Product.objects.get(pk=serializer.validated_data["product"])
