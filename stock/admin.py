@@ -65,8 +65,8 @@ class StockTransferLineInline(admin.TabularInline):
 
 @admin.register(StockTransfer)
 class StockTransferAdmin(SimpleHistoryAdmin):
-    list_display = ("id", "source_store", "target_store", "reference", "transfer_date", "status")
-    list_filter = ("source_store", "target_store", "status", "transfer_date")
+    list_display = ("id", "target_store", "reference", "transfer_date", "status")
+    list_filter = ("target_store", "status", "transfer_date")
     search_fields = ("reference", "note", "lines__product__name", "lines__product__reference")
     readonly_fields = ("created_by", "validated_by", "validated_at", "date_created", "date_updated")
     inlines = [StockTransferLineInline]

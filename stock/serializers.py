@@ -127,9 +127,6 @@ class StockTransferLineSerializer(serializers.ModelSerializer):
 
 
 class StockTransferSerializer(serializers.ModelSerializer):
-    source_store_name = serializers.CharField(
-        source="source_store.name", read_only=True
-    )
     target_store_name = serializers.CharField(
         source="target_store.name", read_only=True
     )
@@ -143,8 +140,6 @@ class StockTransferSerializer(serializers.ModelSerializer):
         model = StockTransfer
         fields = [
             "id",
-            "source_store",
-            "source_store_name",
             "target_store",
             "target_store_name",
             "reference",
@@ -161,7 +156,6 @@ class StockTransferSerializer(serializers.ModelSerializer):
             "lines",
         ]
         read_only_fields = [
-            "source_store",
             "created_by",
             "validated_by",
             "validated_at",

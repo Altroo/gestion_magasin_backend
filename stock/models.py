@@ -137,12 +137,6 @@ class StockTransfer(models.Model):
         VALIDATED = "validated", _("Validé")
         CANCELLED = "cancelled", _("Annulé")
 
-    source_store = models.ForeignKey(
-        "store.Store",
-        on_delete=models.PROTECT,
-        related_name="stock_transfers_sent",
-        verbose_name=_("Magasin source"),
-    )
     target_store = models.ForeignKey(
         "store.Store",
         on_delete=models.PROTECT,
@@ -196,7 +190,7 @@ class StockTransfer(models.Model):
         ordering = ("-transfer_date", "-id")
 
     def __str__(self) -> str:
-        return f"Transfert #{self.pk} - {self.source_store} vers {self.target_store}"
+        return f"Transfert #{self.pk} vers {self.target_store}"
 
 
 class StockTransferLine(models.Model):

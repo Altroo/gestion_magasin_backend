@@ -12,6 +12,7 @@ from stock.models import (
     StockMovement,
     StockTransfer,
 )
+from store.models import Store
 
 
 def _decimal(value) -> Decimal:
@@ -116,21 +117,22 @@ def apply_return_stock(*, store, product: Product, quantity, user=None, source_i
 
 
 @transaction.atomic
-def validate_stock_transfer(*, transfer: StockTransfer, user=None) -> StockTransfer:
+def validate_stock_transfer(*, transfer: StockTransfer, user=None, source_store=None) -> StockTransfer:
     if transfer.status == StockTransfer.Statuses.VALIDATED:
         raise ValidationError({"status": ["Ce transfert est déjà validé."]})
     if transfer.status == StockTransfer.Statuses.CANCELLED:
         raise ValidationError({"status": ["Un transfert annulé ne peut pas être validé."]})
-    if not transfer.source_store.is_global_stock:
-        raise ValidationError({"source_store": ["Le magasin source doit être MBR Stock."]})
     if transfer.target_store.is_global_stock:
         raise ValidationError({"target_store": ["Le magasin destination doit être un magasin de vente."]})
     if not transfer.lines.exists():
         raise ValidationError({"lines": ["Le transfert doit contenir au moins une ligne."]})
+    source_store = source_store or Store.objects.filter(is_global_stock=True, is_active=True).first()
+    if not source_store:
+        raise ValidationError({"store": ["Le stock MBR n'est pas configuré."]})
 
     for line in transfer.lines.select_related("product"):
         apply_stock_movement(
-            store=transfer.source_store,
+            store=source_store,
             product=line.product,
             quantity=-abs(_decimal(line.quantity)),
             movement_type=StockMovement.Types.TRANSFER_OUT,

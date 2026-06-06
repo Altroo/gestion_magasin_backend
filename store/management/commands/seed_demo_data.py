@@ -275,7 +275,6 @@ class Command(BaseCommand):
             if StockTransfer.objects.filter(reference=reference).exists():
                 continue
             transfer = StockTransfer.objects.create(
-                source_store=stores["mbr_stock"],
                 target_store=target_store,
                 reference=reference,
                 transfer_date=timezone.localdate() - timedelta(days=days_ago),

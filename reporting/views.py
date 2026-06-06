@@ -144,9 +144,7 @@ class StoreDashboardReportView(APIView):
             transfer_date__lte=date_to,
         )
         if store_ids is not None:
-            transfers = transfers.filter(
-                Q(source_store_id__in=store_ids) | Q(target_store_id__in=store_ids)
-            )
+            transfers = transfers.filter(target_store_id__in=store_ids)
         inventories = InventorySession.objects.filter(
             inventory_date__gte=date_from,
             inventory_date__lte=date_to,
@@ -338,12 +336,12 @@ def _queryset_for_export(kind, request):
             [[item.pk, item.store.name, item.name, item.status, item.selling_price, item.start_date or "", item.end_date or ""] for item in queryset],
         )
     if kind == "transfers":
-        queryset = StockTransfer.objects.select_related("source_store", "target_store").filter(transfer_date__gte=date_from, transfer_date__lte=date_to)
+        queryset = StockTransfer.objects.select_related("target_store").filter(transfer_date__gte=date_from, transfer_date__lte=date_to)
         if store_ids is not None:
-            queryset = queryset.filter(Q(source_store_id__in=store_ids) | Q(target_store_id__in=store_ids))
+            queryset = queryset.filter(target_store_id__in=store_ids)
         return (
-            ["ID", "Source", "Destination", "Date", "Reference", "Statut"],
-            [[item.pk, item.source_store.name, item.target_store.name, item.transfer_date, item.reference, item.status] for item in queryset],
+            ["ID", "Destination", "Date", "Reference", "Statut"],
+            [[item.pk, item.target_store.name, item.transfer_date, item.reference, item.status] for item in queryset],
         )
     return None
 

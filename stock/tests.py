@@ -120,6 +120,57 @@ def test_stock_list_accepts_comma_separated_low_filter_values():
     }
 
 
+def test_staff_stock_list_filters_store_ids_and_excludes_global_stock():
+    staff = User.objects.create_superuser(
+        email="stock-admin@example.com",
+        password="securepass123",
+    )
+    category = Category.objects.create(code="stock-overview", name="Stock overview")
+    global_store = Store.objects.create(
+        code="mbr-stock-overview",
+        name="MBR Stock overview",
+        is_active=True,
+        is_global_stock=True,
+    )
+    store = Store.objects.create(
+        code="magasin-overview",
+        name="Magasin overview",
+        is_active=True,
+        is_global_stock=False,
+    )
+    global_balance = create_balance(
+        global_store,
+        category,
+        "OVR-MBR",
+        "Article MBR",
+        "20.000",
+        "5.000",
+    )
+    store_balance = create_balance(
+        store,
+        category,
+        "OVR-MAG",
+        "Article magasin",
+        "8.000",
+        "2.000",
+    )
+    client = authenticated_client(staff)
+
+    response = client.get(
+        "/api/stock/balances/",
+        {
+            "store_ids": f"{global_store.pk},{store.pk}",
+            "exclude_global_stock": "true",
+            "search": "overview",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == store_balance.pk
+    assert response.data["results"][0]["id"] != global_balance.pk
+
+
 def test_stock_threshold_update_requires_management_role():
     user, store, category = create_store_setup(role_code=Role.Codes.LECTURE)
     balance = create_balance(
@@ -192,7 +243,7 @@ def test_stock_adjustment_adds_stock_for_responsable_store():
         format="json",
     )
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.data
     balance.refresh_from_db()
     assert balance.quantity == Decimal("55.000")
     assert StockMovement.objects.filter(
@@ -224,7 +275,7 @@ def test_received_purchase_adds_stock_and_purchase_movement():
         format="json",
     )
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.data
     purchase = Purchase.objects.get(pk=response.data["id"])
     assert purchase.status == Purchase.Statuses.RECEIVED
     balance = StockBalance.objects.get(store=store, product=product)
@@ -236,6 +287,75 @@ def test_received_purchase_adds_stock_and_purchase_movement():
         quantity=Decimal("3.000"),
         source_id=purchase.pk,
     ).exists()
+
+
+def test_purchase_list_filters_by_store_and_supplier_name():
+    user, first_store, category = create_store_setup()
+    second_store = Store.objects.create(
+        code="stock-purchase-second",
+        name="STOCK PURCHASE SECOND",
+        is_active=True,
+    )
+    role = Role.objects.get(code=Role.Codes.RESPONSABLE)
+    StoreMembership.objects.create(user=user, store=second_store, role=role)
+    first_product = create_balance(
+        first_store,
+        category,
+        "PUR-FLT-001",
+        "Article achat filtre 1",
+        "2.000",
+        "1.000",
+    ).product
+    second_product = create_balance(
+        second_store,
+        category,
+        "PUR-FLT-002",
+        "Article achat filtre 2",
+        "2.000",
+        "1.000",
+    ).product
+    client = authenticated_client(user)
+
+    first_response = client.post(
+        "/api/stock/purchases/",
+        {
+            "store": first_store.pk,
+            "supplier_name": "Fournisseur Alpha",
+            "reference": "BL-FLT-001",
+            "status": "draft",
+            "lines": [
+                {"product": first_product.pk, "quantity": "1.000", "unit_cost": "10.00"}
+            ],
+        },
+        format="json",
+    )
+    second_response = client.post(
+        "/api/stock/purchases/",
+        {
+            "store": second_store.pk,
+            "supplier_name": "Fournisseur Beta",
+            "reference": "BL-FLT-002",
+            "status": "draft",
+            "lines": [
+                {"product": second_product.pk, "quantity": "1.000", "unit_cost": "10.00"}
+            ],
+        },
+        format="json",
+    )
+    assert first_response.status_code == status.HTTP_201_CREATED, first_response.data
+    assert second_response.status_code == status.HTTP_201_CREATED, second_response.data
+
+    response = client.get(
+        "/api/stock/purchases/",
+        {
+            "store_ids": str(second_store.pk),
+            "supplier_names": "Fournisseur Beta",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.data
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == second_response.data["id"]
 
 
 def test_validated_transfer_moves_stock_from_mbr_to_store():
@@ -272,7 +392,7 @@ def test_validated_transfer_moves_stock_from_mbr_to_store():
         format="json",
     )
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_201_CREATED, response.data
     transfer = StockTransfer.objects.get(pk=response.data["id"])
     assert transfer.status == StockTransfer.Statuses.VALIDATED
     source_balance.refresh_from_db()

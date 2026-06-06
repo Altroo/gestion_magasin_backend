@@ -78,6 +78,7 @@ def _stock_balance_queryset(request):
             Q(product__name__icontains=search)
             | Q(product__reference__icontains=search)
             | Q(product__barcode__icontains=search)
+            | Q(store__name__icontains=search)
         )
 
     queryset = _apply_stock_balance_filters(request, queryset)
@@ -90,8 +91,16 @@ def _stock_balance_queryset(request):
 
 def _apply_stock_balance_filters(request, queryset):
     params = request.query_params
+    store_ids = _parse_int_csv(params.get("store_ids"))
     category_ids = _parse_int_csv(params.get("category_ids"))
     unit_ids = _parse_int_csv(params.get("unit_ids"))
+    exclude_global_values = set(parse_bool_csv_query_value(params.get("exclude_global_stock")))
+    if store_ids:
+        queryset = queryset.filter(store_id__in=store_ids)
+    if exclude_global_values == {True}:
+        queryset = queryset.filter(store__is_global_stock=False)
+    elif exclude_global_values == {False}:
+        queryset = queryset.filter(store__is_global_stock=True)
     if category_ids:
         queryset = queryset.filter(product__category_id__in=category_ids)
     if unit_ids:
@@ -353,28 +362,29 @@ class StockMovementDetailView(APIView):
 
 def _stock_transfer_queryset(request):
     queryset = StockTransfer.objects.select_related(
-        "source_store",
         "target_store",
         "created_by",
         "validated_by",
     ).prefetch_related("lines", "lines__product")
     if not request.user.is_staff:
         allowed_ids = user_store_ids(request.user)
-        queryset = queryset.filter(
-            Q(source_store_id__in=allowed_ids) | Q(target_store_id__in=allowed_ids)
-        )
+        queryset = queryset.filter(target_store_id__in=allowed_ids)
     store_id = request.query_params.get("store") or request.query_params.get("store_id")
     if store_id:
-        queryset = queryset.filter(
-            Q(source_store_id=store_id) | Q(target_store_id=store_id)
-        )
+        queryset = queryset.filter(target_store_id=store_id)
+    target_store_ids = _parse_int_csv(
+        request.query_params.get("target_store_ids")
+        or request.query_params.get("target_store")
+        or request.query_params.get("target_store_id")
+    )
+    if target_store_ids:
+        queryset = queryset.filter(target_store_id__in=target_store_ids)
 
     search = request.query_params.get("search")
     if search:
         queryset = queryset.filter(
             Q(reference__icontains=search)
             | Q(note__icontains=search)
-            | Q(source_store__name__icontains=search)
             | Q(target_store__name__icontains=search)
             | Q(lines__product__name__icontains=search)
             | Q(lines__product__reference__icontains=search)
@@ -404,7 +414,6 @@ def _create_transfer_from_validated_data(*, source_store, target_store, user, da
     if should_validate:
         data["status"] = StockTransfer.Statuses.DRAFT
     transfer = StockTransfer.objects.create(
-        source_store=source_store,
         target_store=target_store,
         reference=data.get("reference", ""),
         transfer_date=data.get("transfer_date") or timezone.localdate(),
@@ -423,7 +432,7 @@ def _create_transfer_from_validated_data(*, source_store, target_store, user, da
             quantity=line_data["quantity"],
         )
     if should_validate:
-        transfer = validate_stock_transfer(transfer=transfer, user=user)
+        transfer = validate_stock_transfer(transfer=transfer, user=user, source_store=source_store)
     return transfer
 
 
@@ -438,9 +447,7 @@ class StockTransferListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
-        source_store = get_global_stock_store_from_request(
-            request, roles=MANAGEMENT_ROLES
-        )
+        source_store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         serializer = StockTransferCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_store = _target_store_for_transfer(
@@ -470,8 +477,7 @@ class StockTransferDetailEditDeleteView(APIView):
 
     def put(self, request, pk, *args, **kwargs):
         transfer = _get_stock_transfer_for_user(request, pk)
-        _ensure_store_management_access(request.user, transfer.source_store_id)
-        _ensure_global_stock_store(transfer.source_store)
+        source_store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         if transfer.status == StockTransfer.Statuses.VALIDATED:
             raise ValidationError(
                 {"status": ["Un transfert validé ne peut plus être modifié."]}
@@ -502,14 +508,14 @@ class StockTransferDetailEditDeleteView(APIView):
         if transfer.status == StockTransfer.Statuses.VALIDATED:
             transfer.status = StockTransfer.Statuses.DRAFT
             transfer.save(update_fields=["status", "date_updated"])
-            transfer = validate_stock_transfer(transfer=transfer, user=request.user)
+            transfer = validate_stock_transfer(transfer=transfer, user=request.user, source_store=source_store)
         return Response(
             StockTransferSerializer(transfer).data, status=status.HTTP_200_OK
         )
 
     def delete(self, request, pk, *args, **kwargs):
         transfer = _get_stock_transfer_for_user(request, pk)
-        _ensure_store_management_access(request.user, transfer.source_store_id)
+        get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         if transfer.status == StockTransfer.Statuses.VALIDATED:
             raise ValidationError(
                 {"status": ["Un transfert validé ne peut pas être supprimé."]}
@@ -524,8 +530,8 @@ class StockTransferValidateView(APIView):
     @staticmethod
     def post(request, pk, *args, **kwargs):
         transfer = _get_stock_transfer_for_user(request, pk)
-        _ensure_store_management_access(request.user, transfer.source_store_id)
-        transfer = validate_stock_transfer(transfer=transfer, user=request.user)
+        source_store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
+        transfer = validate_stock_transfer(transfer=transfer, user=request.user, source_store=source_store)
         return Response(
             StockTransferSerializer(transfer).data, status=status.HTTP_200_OK
         )
@@ -544,7 +550,7 @@ class BulkDeleteStockTransfersView(APIView):
         )
         if not request.user.is_staff:
             queryset = queryset.filter(
-                source_store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES)
+                target_store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES)
             )
         deleted, _deleted_breakdown = queryset.delete()
         if deleted == 0:
@@ -564,6 +570,26 @@ def _purchase_queryset(request):
     store_id = request.query_params.get("store") or request.query_params.get("store_id")
     if store_id:
         queryset = queryset.filter(store_id=store_id)
+    store_ids = _parse_int_csv(
+        request.query_params.get("store_ids")
+        or request.query_params.get("stores")
+    )
+    if store_ids:
+        queryset = queryset.filter(store_id__in=store_ids)
+    supplier_names = [
+        item.strip()
+        for item in str(
+            request.query_params.get("supplier_names")
+            or request.query_params.get("suppliers")
+            or ""
+        ).split(",")
+        if item.strip()
+    ]
+    if supplier_names:
+        supplier_query = Q()
+        for supplier_name in supplier_names:
+            supplier_query |= Q(supplier_name__iexact=supplier_name)
+        queryset = queryset.filter(supplier_query)
 
     search = request.query_params.get("search")
     if search:
