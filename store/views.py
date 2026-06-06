@@ -18,6 +18,53 @@ from store.serializers import (
 )
 
 
+STORE_BUSINESS_DEPENDENCIES = (
+    ("stock_balances", _("stock")),
+    ("stock_movements", _("mouvements de stock")),
+    ("stock_transfers_received", _("transferts de stock")),
+    ("purchases", _("achats")),
+    ("inventory_sessions", _("inventaires")),
+    ("sales", _("ventes")),
+    ("customers", _("clients")),
+    ("promotions", _("promotions")),
+    ("expenses", _("dépenses")),
+    ("employees", _("employés")),
+    ("attendance_records", _("pointages")),
+    ("attendance_imports", _("imports pointage")),
+    ("product_imports", _("imports articles")),
+)
+
+
+def _store_business_dependency_labels(store):
+    labels = []
+    for related_name, label in STORE_BUSINESS_DEPENDENCIES:
+        manager = getattr(store, related_name, None)
+        if manager is not None and manager.exists():
+            labels.append(str(label))
+    return labels
+
+
+def _ensure_store_can_be_deleted(store):
+    if store.is_global_stock:
+        raise ValidationError(
+            {"store": _("Le stock MBR ne peut pas être supprimé.")}
+        )
+
+    labels = _store_business_dependency_labels(store)
+    if labels:
+        dependencies = ", ".join(labels[:5])
+        if len(labels) > 5:
+            dependencies = f"{dependencies}, ..."
+        raise ValidationError(
+            {
+                "store": _(
+                    "Impossible de supprimer ce magasin car il contient déjà des données : %(dependencies)s. Désactivez-le plutôt."
+                )
+                % {"dependencies": dependencies}
+            }
+        )
+
+
 def _filtered_stores_for_user(request):
     queryset = Store.objects.annotate(members_count=Count("memberships")).order_by(
         "name"
@@ -113,10 +160,7 @@ class StoreDetailEditDeleteView(APIView):
 
     def delete(self, request, pk, *args, **kwargs):
         store = self.get_object(pk)
-        if store.is_global_stock:
-            raise ValidationError(
-                {"store": _("Le stock MBR ne peut pas être supprimé.")}
-            )
+        _ensure_store_can_be_deleted(store)
         store.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -135,10 +179,14 @@ class BulkDeleteStoresView(APIView):
         except (TypeError, ValueError):
             raise ValidationError({"ids": _("Les identifiants doivent être entiers.")})
 
-        deleted, _deleted_breakdown = Store.objects.filter(
-            pk__in=ids,
-            is_global_stock=False,
-        ).delete()
+        stores = list(Store.objects.filter(pk__in=ids))
+        if len(stores) != len(set(ids)):
+            raise ValidationError({"ids": _("Certains magasins sont introuvables.")})
+
+        for store in stores:
+            _ensure_store_can_be_deleted(store)
+
+        deleted, _deleted_breakdown = Store.objects.filter(pk__in=ids).delete()
         return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
 

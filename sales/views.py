@@ -362,6 +362,33 @@ class PromotionDetailEditDeleteView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class BulkDeletePromotionsView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def delete(request, *args, **kwargs):
+        _ensure_promotion_create_permission(request.user)
+        ids = request.data.get("ids")
+        if not ids or not isinstance(ids, list):
+            raise ValidationError({"ids": _("Une liste d'identifiants est requise.")})
+
+        try:
+            ids = [int(item) for item in ids]
+        except (TypeError, ValueError):
+            raise ValidationError({"ids": _("Les identifiants doivent être entiers.")})
+
+        queryset = _promotion_queryset(request).filter(pk__in=ids)
+        promotions = list(queryset)
+        if len(promotions) != len(set(ids)):
+            raise ValidationError({"ids": _("Certaines promotions sont introuvables.")})
+
+        for store_id in {promotion.store_id for promotion in promotions}:
+            _ensure_store_management_access(request.user, store_id)
+
+        deleted, _deleted_breakdown = queryset.delete()
+        return Response({"deleted": deleted}, status=status.HTTP_200_OK)
+
+
 def _sale_queryset(request):
     queryset = Sale.objects.select_related(
         "store", "seller", "customer", "payment_mode"

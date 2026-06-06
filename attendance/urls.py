@@ -7,6 +7,7 @@ from attendance.views import (
     AttendanceRecordDetailEditDeleteView,
     AttendanceRecordListCreateView,
     AttendanceSummaryView,
+    BulkDeleteAttendanceRecordsView,
     EmployeeDetailEditDeleteView,
     EmployeeListCreateView,
 )
@@ -20,6 +21,7 @@ urlpatterns = [
     path("imports/<int:pk>/", AttendanceImportBatchDetailView.as_view(), name="attendance-imports-detail"),
     path("import-workbook/", AttendanceImportWorkbookView.as_view(), name="attendance-import-workbook"),
     path("summary/", AttendanceSummaryView.as_view(), name="attendance-summary"),
+    path("bulk-delete/", BulkDeleteAttendanceRecordsView.as_view(), name="attendance-bulk-delete"),
     path("<int:pk>/", AttendanceRecordDetailEditDeleteView.as_view(), name="attendance-detail"),
     path("", AttendanceRecordListCreateView.as_view(), name="attendance-list-create"),
 ]

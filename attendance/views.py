@@ -3,6 +3,7 @@ from django.db.models import Q, Sum
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -239,6 +240,32 @@ class AttendanceRecordDetailEditDeleteView(APIView):
         _ensure_management_access(request.user, record.store_id)
         record.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class BulkDeleteAttendanceRecordsView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def delete(request, *args, **kwargs):
+        ids = request.data.get("ids")
+        if not ids or not isinstance(ids, list):
+            raise ValidationError({"ids": _("Une liste d'identifiants est requise.")})
+
+        try:
+            ids = [int(item) for item in ids]
+        except (TypeError, ValueError):
+            raise ValidationError({"ids": _("Les identifiants doivent être entiers.")})
+
+        queryset = _attendance_base_queryset(request).filter(pk__in=ids)
+        records = list(queryset)
+        if len(records) != len(set(ids)):
+            raise ValidationError({"ids": _("Certains pointages sont introuvables.")})
+
+        for store_id in {record.store_id for record in records}:
+            _ensure_management_access(request.user, store_id)
+
+        deleted, _deleted_breakdown = queryset.delete()
+        return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
 
 class AttendanceImportWorkbookView(APIView):

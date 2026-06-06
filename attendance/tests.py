@@ -142,6 +142,35 @@ def test_attendance_create_calculates_hours_and_delay():
     assert record.delay_minutes == 20
 
 
+def test_attendance_bulk_delete_removes_selected_records():
+    user, store, employee = create_store_setup()
+    first = AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 10),
+        hours_worked=Decimal("8.00"),
+        status=AttendanceRecord.Statuses.PRESENT,
+    )
+    second = AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 11),
+        hours_worked=Decimal("8.00"),
+        status=AttendanceRecord.Statuses.PRESENT,
+    )
+    client = authenticated_client(user)
+
+    response = client.delete(
+        "/api/pointage/bulk-delete/",
+        {"ids": [first.pk, second.pk]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["deleted"] == 2
+    assert not AttendanceRecord.objects.filter(pk__in=[first.pk, second.pk]).exists()
+
+
 def test_attendance_model_calculates_evening_shift_delay():
     user, store, employee = create_store_setup()
 

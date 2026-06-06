@@ -165,6 +165,36 @@ def test_confirm_promotion_sale_reduces_component_stock():
     ).quantity == Decimal("4.000")
 
 
+def test_promotions_bulk_delete_removes_selected_promotions():
+    user = create_user("promo-bulk@example.com")
+    user.can_create_promotion = True
+    user.save(update_fields=["can_create_promotion"])
+    store, _product = create_store_setup(user, Role.Codes.RESPONSABLE)
+    first = Promotion.objects.create(
+        store=store,
+        name="Bulk promo 1",
+        selling_price=Decimal("10.00"),
+        created_by=user,
+    )
+    second = Promotion.objects.create(
+        store=store,
+        name="Bulk promo 2",
+        selling_price=Decimal("12.00"),
+        created_by=user,
+    )
+    client = authenticated_client(user)
+
+    response = client.delete(
+        "/api/sales/promotions/bulk-delete/",
+        {"ids": [first.pk, second.pk]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["deleted"] == 2
+    assert not Promotion.objects.filter(pk__in=[first.pk, second.pk]).exists()
+
+
 def test_low_stock_task_notifies_store_managers():
     responsible = create_user("responsable@example.com")
     store, product = create_store_setup(responsible, role_code=Role.Codes.RESPONSABLE)

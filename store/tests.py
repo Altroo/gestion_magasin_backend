@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -5,6 +7,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from catalog.models import Category, Product
+from stock.models import StockBalance
 from store.models import Role, Store, StoreMembership
 
 pytestmark = pytest.mark.django_db
@@ -124,6 +128,51 @@ class TestStoreAPI:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["deleted"] >= 2
         assert not Store.objects.filter(id__in=[first.id, second.id]).exists()
+
+    def test_staff_cannot_delete_store_with_stock_data(self):
+        user = make_user("store-delete-stock@example.com", is_staff=True)
+        client = authenticated_client(user)
+        store = Store.objects.create(name="Store With Stock", code="STORE_STOCK")
+        category = Category.objects.create(code="STORE_STOCK_CAT", name="Store stock category")
+        product = Product.objects.create(
+            reference="STORE-STOCK-PRODUCT",
+            barcode="STORE-STOCK-PRODUCT",
+            name="Store stock product",
+            category=category,
+            purchase_price=Decimal("1.00"),
+            counter_price=Decimal("2.00"),
+        )
+        StockBalance.objects.create(store=store, product=product, quantity=Decimal("1.000"))
+
+        response = client.delete(reverse("stores-detail", args=[store.pk]), format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert Store.objects.filter(pk=store.pk).exists()
+
+    def test_bulk_delete_blocks_store_with_business_data(self):
+        user = make_user("store-bulk-stock@example.com", is_staff=True)
+        client = authenticated_client(user)
+        empty_store = Store.objects.create(name="Store Empty Bulk", code="STORE_EMPTY_BULK")
+        blocked_store = Store.objects.create(name="Store Blocked Bulk", code="STORE_BLOCKED_BULK")
+        category = Category.objects.create(code="STORE_BLOCK_CAT", name="Store blocked category")
+        product = Product.objects.create(
+            reference="STORE-BLOCK-PRODUCT",
+            barcode="STORE-BLOCK-PRODUCT",
+            name="Store blocked product",
+            category=category,
+            purchase_price=Decimal("1.00"),
+            counter_price=Decimal("2.00"),
+        )
+        StockBalance.objects.create(store=blocked_store, product=product, quantity=Decimal("1.000"))
+
+        response = client.delete(
+            reverse("stores-bulk-delete"),
+            {"ids": [empty_store.pk, blocked_store.pk]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert Store.objects.filter(pk__in=[empty_store.pk, blocked_store.pk]).count() == 2
 
     def test_bulk_delete_requires_ids(self):
         user = make_user("store-empty-delete@example.com", is_staff=True)
