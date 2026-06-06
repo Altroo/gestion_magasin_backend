@@ -177,6 +177,20 @@ def test_product_create_requires_barcode_for_caisse_scan():
     assert "barcode" in response.data["details"]
 
 
+def test_product_scan_unknown_barcode_returns_barcode_error():
+    user, store, _category = create_store_setup()
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/catalog/products/scan/",
+        {"store": store.pk, "code": "ABC"},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.data["status_code"] == status.HTTP_404_NOT_FOUND
+    assert response.data["details"]["barcode"] == ["Article introuvable."]
+
+
 def test_product_import_guide_email_requires_management_role():
     user, store, _category = create_store_setup(role_code=Role.Codes.LECTURE)
     client = authenticated_client(user)

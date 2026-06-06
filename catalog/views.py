@@ -381,7 +381,12 @@ class ProductScanView(APIView):
         code = request.query_params.get("code", "").strip()
         if not code:
             return Response(
-                {"detail": "Code barre requis."}, status=status.HTTP_400_BAD_REQUEST
+                {
+                    "status_code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Code barre requis.",
+                    "details": {"barcode": ["Code barre requis."]},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
         store = get_store_from_request(request)
         product = (
@@ -391,7 +396,12 @@ class ProductScanView(APIView):
         )
         if not product:
             return Response(
-                {"detail": "Article introuvable."}, status=status.HTTP_404_NOT_FOUND
+                {
+                    "status_code": status.HTTP_404_NOT_FOUND,
+                    "message": "Article introuvable.",
+                    "details": {"barcode": ["Article introuvable."]},
+                },
+                status=status.HTTP_404_NOT_FOUND,
             )
         serializer = ProductSerializer(
             product, context={"request": request, "store_id": store.pk}
