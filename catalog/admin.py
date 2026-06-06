@@ -2,6 +2,7 @@ from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
 from catalog.models import Category, Product, ProductImportBatch, ProductUnit
+from gestion_magasin_backend.admin_history import register_history_admin
 
 
 @admin.register(Category)
@@ -40,3 +41,29 @@ class ProductImportBatchAdmin(SimpleHistoryAdmin):
     list_filter = ("store",)
     search_fields = ("file_name",)
     readonly_fields = ("date_created",)
+
+
+register_history_admin(
+    Category,
+    display_fields=("id", "code", "name", "is_active"),
+    list_filter=("is_active",),
+    search_fields=("code", "name"),
+)
+register_history_admin(
+    ProductUnit,
+    display_fields=("id", "code", "name", "is_active"),
+    list_filter=("is_active",),
+    search_fields=("code", "name"),
+)
+register_history_admin(
+    Product,
+    display_fields=("id", "reference", "barcode", "name", "category", "unit", "counter_price", "is_active"),
+    list_filter=("category", "unit", "is_active"),
+    search_fields=("reference", "barcode", "name"),
+)
+register_history_admin(
+    ProductImportBatch,
+    display_fields=("id", "file_name", "store", "imported_count", "skipped_count"),
+    list_filter=("store",),
+    search_fields=("file_name",),
+)

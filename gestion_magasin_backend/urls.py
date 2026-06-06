@@ -49,6 +49,8 @@ def custom_500(request):
 handler404 = custom_404
 handler500 = custom_500
 
+admin.site.site_url = settings.FRONTEND_URL or "/"
+
 urlpatterns = [
     # Health check endpoint (unauthenticated)
     path("api/health/", health_check, name="health-check"),
