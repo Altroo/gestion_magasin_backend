@@ -1,4 +1,7 @@
+import json
+
 from django.core.exceptions import PermissionDenied
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404
@@ -6,17 +9,21 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from catalog.models import Product
 from gestion_magasin_backend.utils import CustomPagination, parse_bool_csv_query_value
-from store.models import Store
+from notification.models import Notification
+from notification.tasks import _broadcast
+from store.models import Role, Store
 from stock.models import (
     InventoryLine,
     InventorySession,
     Purchase,
     PurchaseLine,
+    StockAddRequest,
     StockBalance,
     StockMovement,
     StockTransfer,
@@ -27,6 +34,8 @@ from stock.serializers import (
     InventorySessionSerializer,
     PurchaseCreateSerializer,
     PurchaseSerializer,
+    StockAddRequestDecisionSerializer,
+    StockAddRequestSerializer,
     StockAdjustmentSerializer,
     StockBalanceSerializer,
     StockMovementSerializer,
@@ -42,11 +51,14 @@ from stock.services import (
 from stock.services import validate_stock_transfer
 from store.permissions import (
     MANAGEMENT_ROLES,
+    WRITE_ROLES,
     get_global_stock_store_from_request,
     get_store_from_request,
     user_has_store_access,
     user_store_ids,
 )
+
+User = get_user_model()
 
 
 def _paginate(request, queryset, serializer_class):
@@ -184,6 +196,86 @@ def _ensure_global_stock_store(store):
         raise PermissionDenied("Les entrées de stock doivent utiliser MBR Stock.")
 
 
+def _ensure_stock_approval_access(user, store_id):
+    if not user_has_store_access(user, store_id, roles={Role.Codes.DIRECTION}):
+        raise PermissionDenied("Seule la direction peut valider les demandes d'ajout de stock.")
+
+
+def _stock_add_request_queryset(request):
+    queryset = StockAddRequest.objects.select_related(
+        "store",
+        "product",
+        "requested_by",
+        "reviewed_by",
+    )
+    if not request.user.is_staff:
+        direction_store_ids = set(user_store_ids(request.user, roles={Role.Codes.DIRECTION}))
+        allowed_store_ids = set(user_store_ids(request.user))
+        queryset = queryset.filter(
+            Q(store_id__in=direction_store_ids)
+            | Q(store_id__in=allowed_store_ids, requested_by=request.user)
+        )
+
+    store_id = request.query_params.get("store") or request.query_params.get("store_id")
+    if store_id:
+        queryset = queryset.filter(store_id=store_id)
+    status_value = request.query_params.get("status")
+    if status_value:
+        queryset = queryset.filter(
+            status__in=[item.strip() for item in str(status_value).split(",") if item.strip()]
+        )
+    search = request.query_params.get("search")
+    if search:
+        queryset = queryset.filter(
+            Q(store__name__icontains=search)
+            | Q(product__name__icontains=search)
+            | Q(product__reference__icontains=search)
+            | Q(product__barcode__icontains=search)
+            | Q(note__icontains=search)
+        ).distinct()
+    return queryset
+
+
+def _get_stock_add_request_for_user(request, pk):
+    try:
+        return _stock_add_request_queryset(request).get(pk=pk)
+    except StockAddRequest.DoesNotExist:
+        raise Http404(_("Aucune demande d'ajout de stock ne correspond à la requête."))
+
+
+def _stock_add_request_recipients(stock_request):
+    member_ids = stock_request.store.memberships.filter(
+        is_active=True,
+        role__code=Role.Codes.DIRECTION,
+        user__is_active=True,
+    ).values_list("user_id", flat=True)
+    staff_ids = User.objects.filter(
+        is_staff=True,
+        is_active=True,
+    ).values_list("id", flat=True)
+    return User.objects.filter(
+        id__in=set(member_ids).union(set(staff_ids))
+    ).exclude(pk=stock_request.requested_by_id).distinct()
+
+
+def _notify_stock_add_request(stock_request):
+    for user in _stock_add_request_recipients(stock_request):
+        notification = Notification.objects.create(
+            user=user,
+            store=stock_request.store,
+            product=stock_request.product,
+            title=f"Demande ajout stock - {stock_request.product.name}",
+            message=(
+                f"{stock_request.requested_by or 'Un utilisateur'} demande "
+                f"{stock_request.quantity} unité(s) de {stock_request.product.name} "
+                f"pour {stock_request.store.name}."
+            ),
+            notification_type=Notification.Types.STOCK_ADD_REQUEST,
+            object_id=stock_request.pk,
+        )
+        _broadcast(user.pk, notification)
+
+
 def _target_store_for_transfer(request, store_id):
     try:
         store = Store.objects.get(pk=store_id, is_active=True, is_global_stock=False)
@@ -270,6 +362,7 @@ class StockAdjustmentView(APIView):
     @staticmethod
     def post(request, *args, **kwargs):
         store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
+        _ensure_stock_approval_access(request.user, store.pk)
         serializer = StockAdjustmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         product = Product.objects.get(pk=serializer.validated_data["product"])
@@ -286,6 +379,98 @@ class StockAdjustmentView(APIView):
         return Response(
             StockMovementSerializer(movement).data, status=status.HTTP_201_CREATED
         )
+
+
+class StockAddRequestListCreateView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        return _paginate(
+            request,
+            _stock_add_request_queryset(request),
+            StockAddRequestSerializer,
+        )
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        store = get_store_from_request(request, roles=WRITE_ROLES)
+        serializer = StockAddRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product = Product.objects.filter(
+            pk=serializer.validated_data["product"].pk,
+            is_active=True,
+        ).first()
+        if not product:
+            raise ValidationError({"product": ["Article introuvable."]})
+        stock_request = serializer.save(
+            store=store,
+            product=product,
+            requested_by=request.user if request.user.is_authenticated else None,
+        )
+        transaction.on_commit(lambda: _notify_stock_add_request(stock_request))
+        return Response(
+            StockAddRequestSerializer(stock_request).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class StockAddRequestDetailView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, pk, *args, **kwargs):
+        return Response(
+            StockAddRequestSerializer(_get_stock_add_request_for_user(request, pk)).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class StockAddRequestApproveView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    @transaction.atomic
+    def post(request, pk, *args, **kwargs):
+        stock_request = _get_stock_add_request_for_user(request, pk)
+        _ensure_stock_approval_access(request.user, stock_request.store_id)
+        if stock_request.status != StockAddRequest.Statuses.PENDING:
+            raise ValidationError({"status": ["Cette demande est déjà traitée."]})
+        apply_stock_movement(
+            store=stock_request.store,
+            product=stock_request.product,
+            quantity=stock_request.quantity,
+            movement_type=StockMovement.Types.PURCHASE,
+            user=request.user,
+            unit_cost=stock_request.unit_cost,
+            source_type="stock_add_request",
+            source_id=stock_request.pk,
+            note=stock_request.note,
+        )
+        stock_request.status = StockAddRequest.Statuses.APPROVED
+        stock_request.reviewed_by = request.user
+        stock_request.reviewed_at = timezone.now()
+        stock_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "date_updated"])
+        return Response(StockAddRequestSerializer(stock_request).data, status=status.HTTP_200_OK)
+
+
+class StockAddRequestRejectView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def post(request, pk, *args, **kwargs):
+        stock_request = _get_stock_add_request_for_user(request, pk)
+        _ensure_stock_approval_access(request.user, stock_request.store_id)
+        if stock_request.status != StockAddRequest.Statuses.PENDING:
+            raise ValidationError({"status": ["Cette demande est déjà traitée."]})
+        serializer = StockAddRequestDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        stock_request.status = StockAddRequest.Statuses.REJECTED
+        stock_request.reviewed_by = request.user
+        stock_request.reviewed_at = timezone.now()
+        stock_request.rejection_reason = serializer.validated_data.get("rejection_reason", "")
+        stock_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "rejection_reason", "date_updated"])
+        return Response(StockAddRequestSerializer(stock_request).data, status=status.HTTP_200_OK)
 
 
 class StockThresholdUpdateView(APIView):
@@ -628,6 +813,17 @@ def _get_purchase_for_user(request, pk):
         raise Http404(_("Aucun achat ne correspond à la requête."))
 
 
+def _data_with_json_lines(request):
+    data = {key: value for key, value in request.data.items()}
+    lines = data.get("lines")
+    if isinstance(lines, str):
+        try:
+            data["lines"] = json.loads(lines)
+        except json.JSONDecodeError as exc:
+            raise ValidationError({"lines": ["Format des lignes invalide."]}) from exc
+    return data
+
+
 @transaction.atomic
 def _create_purchase_from_validated_data(*, store, user, data):
     lines_data = data.pop("lines")
@@ -640,6 +836,7 @@ def _create_purchase_from_validated_data(*, store, user, data):
         reference=data.get("reference", ""),
         purchase_date=data.get("purchase_date") or timezone.localdate(),
         status=data.get("status", Purchase.Statuses.DRAFT),
+        invoice_file=data.get("invoice_file"),
         note=data.get("note", ""),
         created_by=user if getattr(user, "is_authenticated", False) else None,
     )
@@ -665,6 +862,7 @@ def _create_purchase_from_validated_data(*, store, user, data):
 
 class PurchaseListCreateView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (JSONParser, MultiPartParser, FormParser)
 
     @staticmethod
     def get(request, *args, **kwargs):
@@ -672,7 +870,7 @@ class PurchaseListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
-        serializer = PurchaseCreateSerializer(data=request.data)
+        serializer = PurchaseCreateSerializer(data=_data_with_json_lines(request))
         serializer.is_valid(raise_exception=True)
         store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
         purchase = _create_purchase_from_validated_data(
@@ -681,16 +879,17 @@ class PurchaseListCreateView(APIView):
             data=dict(serializer.validated_data),
         )
         return Response(
-            PurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED
+            PurchaseSerializer(purchase, context={"request": request}).data, status=status.HTTP_201_CREATED
         )
 
 
 class PurchaseDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (JSONParser, MultiPartParser, FormParser)
 
     def get(self, request, pk, *args, **kwargs):
         return Response(
-            PurchaseSerializer(_get_purchase_for_user(request, pk)).data,
+            PurchaseSerializer(_get_purchase_for_user(request, pk), context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
 
@@ -701,7 +900,7 @@ class PurchaseDetailEditDeleteView(APIView):
             raise ValidationError(
                 {"status": ["Un achat réceptionné ne peut plus être modifié."]}
             )
-        serializer = PurchaseCreateSerializer(data=request.data)
+        serializer = PurchaseCreateSerializer(data=_data_with_json_lines(request))
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             next_store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
@@ -713,6 +912,8 @@ class PurchaseDetailEditDeleteView(APIView):
             purchase.reference = data.get("reference", "")
             purchase.purchase_date = data.get("purchase_date") or purchase.purchase_date
             purchase.status = data.get("status", Purchase.Statuses.DRAFT)
+            if "invoice_file" in data:
+                purchase.invoice_file = data.get("invoice_file")
             purchase.note = data.get("note", "")
             subtotal = 0
             for line_data in lines_data:
@@ -730,7 +931,7 @@ class PurchaseDetailEditDeleteView(APIView):
             purchase.status = Purchase.Statuses.DRAFT
             purchase.save(update_fields=["status", "date_updated"])
             purchase = receive_purchase(purchase=purchase, user=request.user)
-        return Response(PurchaseSerializer(purchase).data, status=status.HTTP_200_OK)
+        return Response(PurchaseSerializer(purchase, context={"request": request}).data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, *args, **kwargs):
         purchase = _get_purchase_for_user(request, pk)

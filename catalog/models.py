@@ -108,6 +108,12 @@ class Product(models.Model):
     expiration_date = models.DateField(
         null=True, blank=True, verbose_name=_("Date expiration")
     )
+    requires_expiration_date = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name=_("Suivi expiration"),
+        help_text=_("Rend la date d'expiration obligatoire pour cet article."),
+    )
     shelf_life_days = models.PositiveIntegerField(
         null=True, blank=True, verbose_name=_("Durée")
     )

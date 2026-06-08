@@ -98,7 +98,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
     paid_amount = _decimal(validated_data.get("paid_amount") or total)
     payment_status = validated_data.get("payment_status") or Sale.PaymentStatuses.PAID
     if payment_mode and payment_mode.is_credit:
-        payment_status = Sale.PaymentStatuses.CREDIT
+        payment_status = Sale.PaymentStatuses.IN_PROGRESS
 
     sale = Sale.objects.create(
         store=store,
@@ -136,7 +136,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
                 source_id=sale.pk,
             )
 
-    if customer and payment_status == Sale.PaymentStatuses.CREDIT:
+    if customer and payment_status == Sale.PaymentStatuses.IN_PROGRESS:
         CustomerCreditLedger.objects.create(
             customer=customer,
             sale=sale,

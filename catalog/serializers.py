@@ -41,6 +41,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "counter_price",
             "default_stock_alert",
             "expiration_date",
+            "requires_expiration_date",
             "shelf_life_days",
             "is_active",
             "available_stock",
@@ -57,6 +58,18 @@ class ProductSerializer(serializers.ModelSerializer):
                 {"barcode": ["Ce champ est obligatoire."]}
             )
         attrs["barcode"] = str(barcode).strip()
+        requires_expiration_date = attrs.get(
+            "requires_expiration_date",
+            getattr(self.instance, "requires_expiration_date", False),
+        )
+        expiration_date = attrs.get(
+            "expiration_date",
+            getattr(self.instance, "expiration_date", None),
+        )
+        if requires_expiration_date and not expiration_date:
+            raise serializers.ValidationError(
+                {"expiration_date": ["Ce champ est obligatoire."]}
+            )
         return attrs
 
     def get_available_stock(self, instance):

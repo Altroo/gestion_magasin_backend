@@ -14,7 +14,7 @@ class ExpenseCategoryAdmin(SimpleHistoryAdmin):
 
 @admin.register(Expense)
 class ExpenseAdmin(SimpleHistoryAdmin):
-    list_display = ("expense_date", "store", "category", "label", "amount", "payment_status")
+    list_display = ("expense_date", "store", "category", "label", "amount", "payment_status", "invoice_file")
     list_filter = ("store", "category", "payment_status", "payment_mode", "expense_date")
     search_fields = ("label", "note", "category__name", "store__name")
     readonly_fields = ("date_created", "date_updated")
@@ -28,7 +28,7 @@ register_history_admin(
 )
 register_history_admin(
     Expense,
-    display_fields=("id", "expense_date", "store", "category", "label", "amount", "payment_status"),
+    display_fields=("id", "expense_date", "store", "category", "label", "amount", "payment_status", "invoice_file"),
     list_filter=("store", "category", "payment_status", "payment_mode", "expense_date"),
     search_fields=("label", "note", "category__name", "store__name"),
 )

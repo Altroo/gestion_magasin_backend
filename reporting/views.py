@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from attendance.models import AttendanceRecord
 from catalog.models import Category, Product
 from finance.models import Expense
-from sales.models import Customer, Promotion, Sale
+from sales.models import Customer, Promotion, Sale, SaleLine
 from stock.models import (
     InventorySession,
     Purchase,
@@ -162,12 +162,54 @@ class StoreDashboardReportView(APIView):
             )
         )
         stock_by_store_map = {}
+        stock_value_by_store_map = {}
         low_stock_by_store_map = {}
         for balance in balances:
             store_name = balance.store.name
             stock_by_store_map[store_name] = stock_by_store_map.get(store_name, 0) + balance.quantity
+            stock_value_by_store_map[store_name] = (
+                stock_value_by_store_map.get(store_name, Decimal("0"))
+                + (balance.quantity or Decimal("0")) * (balance.average_cost or Decimal("0"))
+            )
             if balance.is_low_stock:
                 low_stock_by_store_map[store_name] = low_stock_by_store_map.get(store_name, 0) + 1
+        stock_quantity_total = sum((balance.quantity or Decimal("0")) for balance in balances)
+        stock_value_total = sum(
+            (balance.quantity or Decimal("0")) * (balance.average_cost or Decimal("0"))
+            for balance in balances
+        )
+        out_of_stock_count = sum(1 for balance in balances if balance.quantity <= 0)
+        today = timezone.localdate()
+        today_cash_total = _sum(
+            _apply_store_filter(
+                Sale.objects.filter(
+                    status=Sale.Statuses.CONFIRMED,
+                    payment_status=Sale.PaymentStatuses.PAID,
+                    date_created__date=today,
+                ),
+                store_ids,
+            ),
+            "paid_amount",
+        )
+        sale_lines = SaleLine.objects.select_related("sale", "product").filter(
+            sale__status=Sale.Statuses.CONFIRMED,
+            sale__date_created__date__gte=date_from,
+            sale__date_created__date__lte=date_to,
+        )
+        if store_ids is not None:
+            sale_lines = sale_lines.filter(sale__store_id__in=store_ids)
+        margin_map = {}
+        for line in sale_lines:
+            product_name = line.product.name
+            item = margin_map.setdefault(
+                product_name,
+                {"product": product_name, "revenue": Decimal("0"), "cost": Decimal("0"), "margin": Decimal("0")},
+            )
+            revenue = line.total or Decimal("0")
+            cost = (line.quantity or Decimal("0")) * (line.unit_cost or Decimal("0"))
+            item["revenue"] += revenue
+            item["cost"] += cost
+            item["margin"] += revenue - cost
 
         return Response(
             {
@@ -176,9 +218,14 @@ class StoreDashboardReportView(APIView):
                 "kpis": {
                     "sales_count": sales.count(),
                     "sales_total": sales_total,
+                    "orders_count": purchases.count(),
                     "expenses_total": expenses_total,
                     "purchases_total": purchases_total,
                     "net_total": sales_total - expenses_total - purchases_total,
+                    "stock_quantity_total": stock_quantity_total,
+                    "stock_value_total": stock_value_total,
+                    "out_of_stock_count": out_of_stock_count,
+                    "today_cash_total": today_cash_total,
                     "low_stock_count": low_stock_count,
                     "expired_count": expired_count,
                     "expiring_count": expiring_count,
@@ -213,9 +260,28 @@ class StoreDashboardReportView(APIView):
                     for item in attendance_trend
                 ],
                 "stock_by_store": [
-                    {"store": store, "quantity": quantity}
+                    {
+                        "store": store,
+                        "quantity": quantity,
+                        "value": stock_value_by_store_map.get(store, Decimal("0")),
+                    }
                     for store, quantity in sorted(stock_by_store_map.items(), key=lambda item: item[0])[:12]
                 ],
+                "out_of_stock_products": [
+                    {
+                        "id": balance.pk,
+                        "store": balance.store.name,
+                        "product": balance.product.name,
+                        "quantity": balance.quantity,
+                    }
+                    for balance in balances
+                    if balance.quantity <= 0
+                ][:10],
+                "margin_by_product": sorted(
+                    margin_map.values(),
+                    key=lambda item: item["margin"],
+                    reverse=True,
+                )[:12],
                 "low_stock_by_store": [
                     {"store": store, "count": count}
                     for store, count in sorted(low_stock_by_store_map.items(), key=lambda item: item[1], reverse=True)[:12]
@@ -397,6 +463,7 @@ STATUS_LABELS = {
     "void": "Annulée",
     "adjustment": "Ajustement",
     "import": "Import",
+    "in_progress": "En cours",
     "inventory": "Inventaire",
     "purchase": "Achat",
     "return": "Retour",

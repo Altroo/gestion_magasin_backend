@@ -1,7 +1,9 @@
 from decimal import Decimal
+import json
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -9,6 +11,7 @@ from catalog.models import Category, Product, ProductUnit
 from stock.models import (
     InventorySession,
     Purchase,
+    StockAddRequest,
     StockBalance,
     StockMovement,
     StockTransfer,
@@ -224,8 +227,10 @@ def test_stock_bulk_delete_removes_selected_balance_for_responsable():
     assert not StockBalance.objects.filter(pk=balance.pk).exists()
 
 
-def test_stock_adjustment_adds_stock_for_responsable_store():
-    user, store, category = create_store_setup(is_global_stock=False)
+def test_stock_adjustment_adds_stock_for_direction_store():
+    user, store, category = create_store_setup(
+        role_code=Role.Codes.DIRECTION, is_global_stock=False
+    )
     balance = create_balance(
         store, category, "STK-ADD", "Article ajout", "5.000", "2.000"
     )
@@ -251,6 +256,60 @@ def test_stock_adjustment_adds_stock_for_responsable_store():
         product=balance.product,
         movement_type=StockMovement.Types.ADJUSTMENT,
         quantity=Decimal("50.000"),
+    ).exists()
+
+
+def test_responsable_requests_stock_addition_and_direction_approves_it():
+    user, store, category = create_store_setup(is_global_stock=False)
+    direction = User.objects.create_user(
+        email="stock-direction@example.com", password="securepass123"
+    )
+    direction_role, _ = Role.objects.get_or_create(
+        code=Role.Codes.DIRECTION,
+        defaults={"name": "Direction", "rank": 10},
+    )
+    StoreMembership.objects.create(user=direction, store=store, role=direction_role)
+    balance = create_balance(
+        store, category, "STK-REQ", "Article demande", "5.000", "2.000"
+    )
+
+    client = authenticated_client(user)
+    create_response = client.post(
+        "/api/stock/add-requests/",
+        {
+            "store": store.pk,
+            "product": balance.product.pk,
+            "quantity": "10.000",
+            "unit_cost": "8.50",
+            "note": "Achat local",
+        },
+        format="json",
+    )
+
+    assert create_response.status_code == status.HTTP_201_CREATED, create_response.data
+    stock_request = StockAddRequest.objects.get(pk=create_response.data["id"])
+    assert stock_request.status == StockAddRequest.Statuses.PENDING
+    balance.refresh_from_db()
+    assert balance.quantity == Decimal("5.000")
+
+    direction_client = authenticated_client(direction)
+    approve_response = direction_client.post(
+        f"/api/stock/add-requests/{stock_request.pk}/approve/",
+        format="json",
+    )
+
+    assert approve_response.status_code == status.HTTP_200_OK, approve_response.data
+    stock_request.refresh_from_db()
+    balance.refresh_from_db()
+    assert stock_request.status == StockAddRequest.Statuses.APPROVED
+    assert balance.quantity == Decimal("15.000")
+    assert StockMovement.objects.filter(
+        store=store,
+        product=balance.product,
+        movement_type=StockMovement.Types.PURCHASE,
+        quantity=Decimal("10.000"),
+        source_type="stock_add_request",
+        source_id=stock_request.pk,
     ).exists()
 
 
@@ -287,6 +346,37 @@ def test_received_purchase_adds_stock_and_purchase_movement():
         quantity=Decimal("3.000"),
         source_id=purchase.pk,
     ).exists()
+
+
+def test_purchase_create_accepts_invoice_file_with_json_lines():
+    user, store, category = create_store_setup(is_global_stock=True)
+    product = create_balance(
+        store, category, "PUR-FILE", "Article facture achat", "2.000", "1.000"
+    ).product
+    client = authenticated_client(user)
+    invoice = SimpleUploadedFile(
+        "bon-achat.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+    )
+
+    response = client.post(
+        "/api/stock/purchases/",
+        {
+            "store": store.pk,
+            "supplier_name": "Fournisseur facture",
+            "reference": "BL-FILE",
+            "status": "draft",
+            "lines": json.dumps(
+                [{"product": product.pk, "quantity": "3.000", "unit_cost": "12.50"}]
+            ),
+            "invoice_file": invoice,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    purchase = Purchase.objects.get(pk=response.data["id"])
+    assert purchase.invoice_file.name.endswith(".pdf")
+    assert response.data["invoice_file_url"]
 
 
 def test_purchase_list_filters_by_store_and_supplier_name():

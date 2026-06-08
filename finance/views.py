@@ -3,6 +3,7 @@ from django.db.models import Q
 from django.http import Http404
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -135,55 +136,57 @@ class ExpenseCategoryDetailEditDeleteView(APIView):
 
 class ExpenseListCreateView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (JSONParser, MultiPartParser, FormParser)
 
     @staticmethod
     def get(request):
         paginator = CustomPagination()
         page = paginator.paginate_queryset(_expense_queryset(request), request)
-        serializer = ExpenseSerializer(page, many=True)
+        serializer = ExpenseSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
     @staticmethod
     def post(request):
         store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
-        serializer = ExpenseSerializer(data=request.data)
+        serializer = ExpenseSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         expense = serializer.save(
             store=store,
             created_by=request.user if request.user.is_authenticated else None,
         )
-        return Response(ExpenseSerializer(expense).data, status=status.HTTP_201_CREATED)
+        return Response(ExpenseSerializer(expense, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 class ExpenseDetailEditDeleteView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (JSONParser, MultiPartParser, FormParser)
 
     @staticmethod
     def get(request, pk):
         expense = _get_expense_for_user(request, pk)
-        return Response(ExpenseSerializer(expense).data)
+        return Response(ExpenseSerializer(expense, context={"request": request}).data)
 
     @staticmethod
     def put(request, pk):
         expense = _get_expense_for_user(request, pk)
         _ensure_expense_management_access(request, expense)
-        serializer = ExpenseSerializer(expense, data=request.data)
+        serializer = ExpenseSerializer(expense, data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         next_store = serializer.validated_data.get("store", expense.store)
         if not user_has_store_access(request.user, next_store.pk, roles=MANAGEMENT_ROLES):
             raise PermissionDenied("Rôle insuffisant pour ce magasin.")
-        return Response(ExpenseSerializer(serializer.save()).data)
+        return Response(ExpenseSerializer(serializer.save(), context={"request": request}).data)
 
     @staticmethod
     def patch(request, pk):
         expense = _get_expense_for_user(request, pk)
         _ensure_expense_management_access(request, expense)
-        serializer = ExpenseSerializer(expense, data=request.data, partial=True)
+        serializer = ExpenseSerializer(expense, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         next_store = serializer.validated_data.get("store", expense.store)
         if not user_has_store_access(request.user, next_store.pk, roles=MANAGEMENT_ROLES):
             raise PermissionDenied("Rôle insuffisant pour ce magasin.")
-        return Response(ExpenseSerializer(serializer.save()).data)
+        return Response(ExpenseSerializer(serializer.save(), context={"request": request}).data)
 
     @staticmethod
     def delete(request, pk):

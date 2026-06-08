@@ -29,9 +29,11 @@ class ProductAdmin(SimpleHistoryAdmin):
         "unit",
         "counter_price",
         "default_stock_alert",
+        "requires_expiration_date",
+        "expiration_date",
         "is_active",
     )
-    list_filter = ("category", "unit", "is_active")
+    list_filter = ("category", "unit", "requires_expiration_date", "is_active")
     search_fields = ("reference", "barcode", "name")
 
 
@@ -57,8 +59,8 @@ register_history_admin(
 )
 register_history_admin(
     Product,
-    display_fields=("id", "reference", "barcode", "name", "category", "unit", "counter_price", "is_active"),
-    list_filter=("category", "unit", "is_active"),
+    display_fields=("id", "reference", "barcode", "name", "category", "unit", "counter_price", "requires_expiration_date", "expiration_date", "is_active"),
+    list_filter=("category", "unit", "requires_expiration_date", "is_active"),
     search_fields=("reference", "barcode", "name"),
 )
 register_history_admin(

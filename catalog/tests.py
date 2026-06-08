@@ -177,6 +177,34 @@ def test_product_create_requires_barcode_for_caisse_scan():
     assert "barcode" in response.data["details"]
 
 
+def test_product_create_requires_expiration_date_when_tracking_is_enabled():
+    user, store, category = create_store_setup()
+    unit = ProductUnit.default()
+    client = authenticated_client(user)
+
+    response = client.post(
+        f"/api/catalog/products/?store={store.pk}",
+        {
+            "reference": "EXP-REQUIRED",
+            "barcode": "EXP-REQUIRED",
+            "name": "Article expiration",
+            "category": category.pk,
+            "unit": unit.pk,
+            "purchase_price": "10.00",
+            "wholesale_price": "12.00",
+            "detail_price": "14.00",
+            "counter_price": "15.00",
+            "default_stock_alert": "2.000",
+            "requires_expiration_date": True,
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "expiration_date" in response.data["details"]
+
+
 def test_product_scan_unknown_barcode_returns_barcode_error():
     user, store, _category = create_store_setup()
     client = authenticated_client(user)

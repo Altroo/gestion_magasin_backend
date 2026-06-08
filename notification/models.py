@@ -38,6 +38,7 @@ class NotificationPreference(models.Model):
 class Notification(models.Model):
     class Types(models.TextChoices):
         LOW_STOCK = "low_stock", _("Stock minimum atteint")
+        STOCK_ADD_REQUEST = "stock_add_request", _("Demande ajout stock")
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -80,4 +81,3 @@ class Notification(models.Model):
 
     def __str__(self) -> str:
         return f"{self.title} - {self.user.email}"
-

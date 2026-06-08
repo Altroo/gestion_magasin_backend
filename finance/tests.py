@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -56,6 +57,34 @@ def test_expense_create_assigns_current_user_and_store():
     assert expense.created_by == user
     assert expense.amount == Decimal("1500.00")
     assert response.data["payment_mode_name"] == "Virement"
+
+
+def test_expense_create_accepts_invoice_file():
+    user, store, category = create_store_setup()
+    client = authenticated_client(user)
+    invoice = SimpleUploadedFile(
+        "facture.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+    )
+
+    response = client.post(
+        "/api/finance/",
+        {
+            "store": store.pk,
+            "category": category.pk,
+            "label": "Facture eau",
+            "amount": "250.00",
+            "payment_status": "paid",
+            "payment_mode": "cash",
+            "expense_date": "2026-06-01",
+            "invoice_file": invoice,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    expense = Expense.objects.get(pk=response.data["id"])
+    assert expense.invoice_file.name.endswith(".pdf")
+    assert response.data["invoice_file_url"]
 
 
 def test_expense_category_crud_is_available_to_authenticated_users():

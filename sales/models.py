@@ -137,7 +137,8 @@ class Sale(models.Model):
 
     class PaymentStatuses(models.TextChoices):
         PAID = "paid", _("Payée")
-        CREDIT = "credit", _("Crédit")
+        IN_PROGRESS = "in_progress", _("En cours")
+        CANCELLED = "cancelled", _("Annulée")
 
     store = models.ForeignKey(
         "store.Store",

@@ -1,6 +1,14 @@
+from os import path
+from uuid import uuid4
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from simple_history.models import HistoricalRecords
+
+
+def get_expense_invoice_path(_, filename):
+    _, ext = path.splitext(filename)
+    return path.join("expenses/invoices/", str(uuid4()) + ext)
 
 
 class ExpenseCategory(models.Model):
@@ -59,6 +67,12 @@ class Expense(models.Model):
         verbose_name=_("Mode de paiement"),
     )
     expense_date = models.DateField(db_index=True, verbose_name=_("Date"))
+    invoice_file = models.FileField(
+        upload_to=get_expense_invoice_path,
+        null=True,
+        blank=True,
+        verbose_name=_("Facture"),
+    )
     note = models.TextField(blank=True, default="", verbose_name=_("Note"))
     created_by = models.ForeignKey(
         "accounts.CustomUser",
@@ -79,4 +93,3 @@ class Expense(models.Model):
 
     def __str__(self) -> str:
         return f"{self.label} - {self.amount}"
-

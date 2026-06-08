@@ -7,6 +7,7 @@ from stock.models import (
     InventorySession,
     Purchase,
     PurchaseLine,
+    StockAddRequest,
     StockBalance,
     StockMovement,
     StockTransfer,
@@ -29,6 +30,14 @@ class StockMovementAdmin(SimpleHistoryAdmin):
     readonly_fields = ("date_created",)
 
 
+@admin.register(StockAddRequest)
+class StockAddRequestAdmin(SimpleHistoryAdmin):
+    list_display = ("id", "store", "product", "quantity", "unit_cost", "status", "requested_by", "reviewed_by")
+    list_filter = ("store", "status", "date_created")
+    search_fields = ("store__name", "product__name", "product__reference", "product__barcode", "note")
+    readonly_fields = ("requested_by", "reviewed_by", "reviewed_at", "date_created", "date_updated")
+
+
 class PurchaseLineInline(admin.TabularInline):
     model = PurchaseLine
     extra = 0
@@ -45,7 +54,7 @@ class PurchaseLineAdmin(SimpleHistoryAdmin):
 
 @admin.register(Purchase)
 class PurchaseAdmin(SimpleHistoryAdmin):
-    list_display = ("id", "store", "supplier_name", "reference", "purchase_date", "status", "subtotal")
+    list_display = ("id", "store", "supplier_name", "reference", "purchase_date", "status", "subtotal", "invoice_file")
     list_filter = ("store", "status", "purchase_date")
     search_fields = ("supplier_name", "reference", "note", "lines__product__name")
     readonly_fields = ("subtotal", "created_by", "received_by", "received_at", "date_created", "date_updated")
@@ -109,8 +118,14 @@ register_history_admin(
     search_fields=("product__name", "product__reference", "note", "store__name"),
 )
 register_history_admin(
+    StockAddRequest,
+    display_fields=("id", "store", "product", "quantity", "unit_cost", "status", "requested_by", "reviewed_by"),
+    list_filter=("store", "status"),
+    search_fields=("store__name", "product__name", "product__reference", "product__barcode", "note"),
+)
+register_history_admin(
     Purchase,
-    display_fields=("id", "store", "supplier_name", "reference", "purchase_date", "status", "subtotal"),
+    display_fields=("id", "store", "supplier_name", "reference", "purchase_date", "status", "subtotal", "invoice_file"),
     list_filter=("store", "status", "purchase_date"),
     search_fields=("supplier_name", "reference", "note"),
 )

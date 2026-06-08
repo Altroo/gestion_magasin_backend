@@ -1,9 +1,16 @@
 from decimal import Decimal
+from os import path
+from uuid import uuid4
 
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from simple_history.models import HistoricalRecords
+
+
+def get_purchase_invoice_path(_, filename):
+    _, ext = path.splitext(filename)
+    return path.join("purchases/invoices/", str(uuid4()) + ext)
 
 
 class StockBalance(models.Model):
@@ -131,6 +138,65 @@ class StockMovement(models.Model):
         return f"{self.movement_type} {self.product} ({self.quantity})"
 
 
+class StockAddRequest(models.Model):
+    class Statuses(models.TextChoices):
+        PENDING = "pending", _("En attente")
+        APPROVED = "approved", _("Approuvée")
+        REJECTED = "rejected", _("Rejetée")
+
+    store = models.ForeignKey(
+        "store.Store",
+        on_delete=models.PROTECT,
+        related_name="stock_add_requests",
+        verbose_name=_("Magasin"),
+    )
+    product = models.ForeignKey(
+        "catalog.Product",
+        on_delete=models.PROTECT,
+        related_name="stock_add_requests",
+        verbose_name=_("Article"),
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, verbose_name=_("Quantité"))
+    unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name=_("Coût unitaire"))
+    status = models.CharField(
+        max_length=20,
+        choices=Statuses.choices,
+        default=Statuses.PENDING,
+        db_index=True,
+        verbose_name=_("Statut"),
+    )
+    note = models.TextField(blank=True, default="", verbose_name=_("Note"))
+    requested_by = models.ForeignKey(
+        "accounts.CustomUser",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="stock_add_requests",
+        verbose_name=_("Demandé par"),
+    )
+    reviewed_by = models.ForeignKey(
+        "accounts.CustomUser",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="stock_add_requests_reviewed",
+        verbose_name=_("Validé par"),
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="", verbose_name=_("Motif rejet"))
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = _("Demande ajout stock")
+        verbose_name_plural = _("Demandes ajout stock")
+        ordering = ("-date_created",)
+
+    def __str__(self) -> str:
+        return f"{self.store} - {self.product} ({self.quantity})"
+
+
 class StockTransfer(models.Model):
     class Statuses(models.TextChoices):
         DRAFT = "draft", _("Brouillon")
@@ -250,6 +316,12 @@ class Purchase(models.Model):
         verbose_name=_("Statut"),
     )
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    invoice_file = models.FileField(
+        upload_to=get_purchase_invoice_path,
+        null=True,
+        blank=True,
+        verbose_name=_("Facture"),
+    )
     note = models.TextField(blank=True, default="", verbose_name=_("Note"))
     created_by = models.ForeignKey(
         "accounts.CustomUser",
