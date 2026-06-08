@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 
 from catalog.models import Product
 from gestion_magasin_backend.utils import CustomPagination, parse_bool_csv_query_value
-from notification.models import Notification
+from notification.models import Notification, NotificationPreference
 from notification.tasks import _broadcast
 from stock.filters import (
     InventorySessionFilter,
@@ -166,6 +166,9 @@ def _stock_add_request_recipients(stock_request):
 
 def _notify_stock_add_request(stock_request):
     for user in _stock_add_request_recipients(stock_request):
+        preference, _ = NotificationPreference.objects.get_or_create(user=user)
+        if not preference.notify_stock_add_requests:
+            continue
         notification = Notification.objects.create(
             user=user,
             store=stock_request.store,

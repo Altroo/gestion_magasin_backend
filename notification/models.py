@@ -15,6 +15,10 @@ class NotificationPreference(models.Model):
         default=True,
         verbose_name=_("Notifier le stock minimum"),
     )
+    notify_stock_add_requests = models.BooleanField(
+        default=True,
+        verbose_name=_("Notifier les demandes d'ajout de stock"),
+    )
     low_stock_repeat_hours = models.PositiveIntegerField(
         default=24,
         verbose_name=_("Répéter l'alerte stock après X heures"),

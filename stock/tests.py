@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from catalog.models import Category, Product, ProductUnit
+from notification.models import Notification, NotificationPreference
 from stock.models import (
     InventorySession,
     Purchase,
@@ -259,7 +260,7 @@ def test_stock_adjustment_adds_stock_for_direction_store():
     ).exists()
 
 
-def test_responsable_requests_stock_addition_and_direction_approves_it():
+def test_responsable_requests_stock_addition_and_direction_approves_it(django_capture_on_commit_callbacks):
     user, store, category = create_store_setup(is_global_stock=False)
     direction = User.objects.create_user(
         email="stock-direction@example.com", password="securepass123"
@@ -274,21 +275,27 @@ def test_responsable_requests_stock_addition_and_direction_approves_it():
     )
 
     client = authenticated_client(user)
-    create_response = client.post(
-        "/api/stock/add-requests/",
-        {
-            "store": store.pk,
-            "product": balance.product.pk,
-            "quantity": "10.000",
-            "unit_cost": "8.50",
-            "note": "Achat local",
-        },
-        format="json",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        create_response = client.post(
+            "/api/stock/add-requests/",
+            {
+                "store": store.pk,
+                "product": balance.product.pk,
+                "quantity": "10.000",
+                "unit_cost": "8.50",
+                "note": "Achat local",
+            },
+            format="json",
+        )
 
     assert create_response.status_code == status.HTTP_201_CREATED, create_response.data
     stock_request = StockAddRequest.objects.get(pk=create_response.data["id"])
     assert stock_request.status == StockAddRequest.Statuses.PENDING
+    assert Notification.objects.filter(
+        user=direction,
+        notification_type=Notification.Types.STOCK_ADD_REQUEST,
+        object_id=stock_request.pk,
+    ).exists()
     balance.refresh_from_db()
     assert balance.quantity == Decimal("5.000")
 
@@ -310,6 +317,45 @@ def test_responsable_requests_stock_addition_and_direction_approves_it():
         quantity=Decimal("10.000"),
         source_type="stock_add_request",
         source_id=stock_request.pk,
+    ).exists()
+
+
+def test_stock_add_request_respects_direction_notification_preference(django_capture_on_commit_callbacks):
+    user, store, category = create_store_setup(is_global_stock=False)
+    direction = User.objects.create_user(
+        email="stock-direction-disabled@example.com", password="securepass123"
+    )
+    direction_role, _ = Role.objects.get_or_create(
+        code=Role.Codes.DIRECTION,
+        defaults={"name": "Direction", "rank": 10},
+    )
+    StoreMembership.objects.create(user=direction, store=store, role=direction_role)
+    preference, _ = NotificationPreference.objects.get_or_create(user=direction)
+    preference.notify_stock_add_requests = False
+    preference.save(update_fields=["notify_stock_add_requests", "date_updated"])
+    balance = create_balance(
+        store, category, "STK-REQ-DISABLED", "Article demande disabled", "5.000", "2.000"
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = authenticated_client(user).post(
+            "/api/stock/add-requests/",
+            {
+                "store": store.pk,
+                "product": balance.product.pk,
+                "quantity": "10.000",
+                "unit_cost": "8.50",
+                "note": "Achat local",
+            },
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    stock_request = StockAddRequest.objects.get(pk=response.data["id"])
+    assert not Notification.objects.filter(
+        user=direction,
+        notification_type=Notification.Types.STOCK_ADD_REQUEST,
+        object_id=stock_request.pk,
     ).exists()
 
 

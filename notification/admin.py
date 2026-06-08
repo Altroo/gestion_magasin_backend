@@ -7,7 +7,13 @@ from notification.models import Notification, NotificationPreference
 
 @admin.register(NotificationPreference)
 class NotificationPreferenceAdmin(SimpleHistoryAdmin):
-    list_display = ("user", "notify_low_stock", "low_stock_repeat_hours", "browser_notifications")
+    list_display = (
+        "user",
+        "notify_low_stock",
+        "notify_stock_add_requests",
+        "low_stock_repeat_hours",
+        "browser_notifications",
+    )
     search_fields = ("user__email",)
     readonly_fields = ("date_created", "date_updated")
 
@@ -22,7 +28,14 @@ class NotificationAdmin(SimpleHistoryAdmin):
 
 register_history_admin(
     NotificationPreference,
-    display_fields=("id", "user", "notify_low_stock", "low_stock_repeat_hours", "browser_notifications"),
+    display_fields=(
+        "id",
+        "user",
+        "notify_low_stock",
+        "notify_stock_add_requests",
+        "low_stock_repeat_hours",
+        "browser_notifications",
+    ),
     search_fields=("user__email",),
 )
 register_history_admin(

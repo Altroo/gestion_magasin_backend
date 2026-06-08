@@ -9,6 +9,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "notify_low_stock",
+            "notify_stock_add_requests",
             "low_stock_repeat_hours",
             "browser_notifications",
             "date_created",
@@ -48,4 +49,3 @@ class NotificationSerializer(serializers.ModelSerializer):
             "product_name",
             "date_created",
         ]
-
