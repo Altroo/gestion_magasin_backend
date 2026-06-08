@@ -4,7 +4,7 @@ from decimal import Decimal
 from io import BytesIO
 from xml.sax.saxutils import escape
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from attendance.models import AttendanceRecord
 from catalog.models import Category, Product
 from finance.models import Expense
+from reporting.filters import ReportingScopeFilter
 from sales.models import Customer, Promotion, Sale, SaleLine
 from stock.models import (
     InventorySession,
@@ -24,35 +25,25 @@ from stock.models import (
     StockTransfer,
 )
 from store.models import Store
-from store.permissions import get_store_from_request, user_store_ids
+from store.permissions import get_store_from_request
 
 
 def _date_range(request, default_days=30):
-    today = timezone.localdate()
-    date_from = request.query_params.get("date_from")
-    date_to = request.query_params.get("date_to")
-    start = today - timedelta(days=default_days - 1)
-    end = today
-    if date_from:
-        start = timezone.datetime.fromisoformat(date_from).date()
-    if date_to:
-        end = timezone.datetime.fromisoformat(date_to).date()
-    return start, end
+    return ReportingScopeFilter(
+        request.query_params,
+        request=request,
+        default_days=default_days,
+    ).get_date_range()
 
 
 def _store_ids_for_request(request):
-    raw_store = request.query_params.get("store") or request.query_params.get("store_id")
-    if raw_store and str(raw_store).lower() != "all":
-        return [get_store_from_request(request).pk]
-    if request.user.is_staff:
-        return None
-    return user_store_ids(request.user)
+    return ReportingScopeFilter(
+        request.query_params, request=request
+    ).get_store_ids()
 
 
 def _apply_store_filter(queryset, store_ids):
-    if store_ids is None:
-        return queryset
-    return queryset.filter(store_id__in=store_ids)
+    return ReportingScopeFilter.apply_store_filter(queryset, store_ids)
 
 
 def _sum(queryset, field):
@@ -60,13 +51,9 @@ def _sum(queryset, field):
 
 
 def _dashboard_store_scope(request):
-    raw_store = request.query_params.get("store") or request.query_params.get("store_id")
-    if raw_store and str(raw_store).lower() != "all":
-        store = get_store_from_request(request)
-        return [store.pk], {"id": store.pk, "name": store.name}
-    if request.user.is_staff:
-        return None, {"id": None, "name": "Tous les magasins"}
-    return user_store_ids(request.user), {"id": None, "name": "Tous les magasins"}
+    return ReportingScopeFilter(
+        request.query_params, request=request
+    ).get_dashboard_store_scope()
 
 
 class StoreDashboardReportView(APIView):
@@ -144,7 +131,9 @@ class StoreDashboardReportView(APIView):
             transfer_date__lte=date_to,
         )
         if store_ids is not None:
-            transfers = transfers.filter(target_store_id__in=store_ids)
+            transfers = ReportingScopeFilter.apply_store_filter(
+                transfers, store_ids, field_name="target_store_id"
+            )
         inventories = InventorySession.objects.filter(
             inventory_date__gte=date_from,
             inventory_date__lte=date_to,
@@ -197,7 +186,9 @@ class StoreDashboardReportView(APIView):
             sale__date_created__date__lte=date_to,
         )
         if store_ids is not None:
-            sale_lines = sale_lines.filter(sale__store_id__in=store_ids)
+            sale_lines = ReportingScopeFilter.apply_store_filter(
+                sale_lines, store_ids, field_name="sale__store_id"
+            )
         margin_map = {}
         for line in sale_lines:
             product_name = line.product.name
@@ -404,7 +395,9 @@ def _queryset_for_export(kind, request):
     if kind == "transfers":
         queryset = StockTransfer.objects.select_related("target_store").filter(transfer_date__gte=date_from, transfer_date__lte=date_to)
         if store_ids is not None:
-            queryset = queryset.filter(target_store_id__in=store_ids)
+            queryset = ReportingScopeFilter.apply_store_filter(
+                queryset, store_ids, field_name="target_store_id"
+            )
         return (
             ["ID", "Destination", "Date", "Reference", "Statut"],
             [[item.pk, item.target_store.name, item.transfer_date, item.reference, item.status] for item in queryset],

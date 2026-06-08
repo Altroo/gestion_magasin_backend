@@ -8,6 +8,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from catalog.filters import CategoryFilter, ProductFilter, ProductUnitFilter
 from catalog.importers import import_products_from_workbook
 from catalog.models import Category, Product, ProductImportBatch, ProductUnit
 from catalog.serializers import (
@@ -16,7 +17,7 @@ from catalog.serializers import (
     ProductSerializer,
     ProductUnitSerializer,
 )
-from gestion_magasin_backend.utils import CustomPagination, parse_bool_csv_query_value
+from gestion_magasin_backend.utils import CustomPagination
 from stock.models import StockBalance
 from store.permissions import (
     MANAGEMENT_ROLES,
@@ -37,63 +38,19 @@ def _paginate(request, queryset, serializer_class, context=None):
 
 def _category_queryset(request):
     queryset = Category.objects.all()
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(code__icontains=search) | Q(name__icontains=search)
-        )
-
-    for param, field in {"code": "code", "name": "name"}.items():
-        for lookup in ("icontains", "istartswith", "iendswith"):
-            value = request.query_params.get(f"{param}__{lookup}")
-            if value:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-        exact = request.query_params.get(param)
-        if exact:
-            queryset = queryset.filter(**{field: exact})
-
-    is_active_values = parse_bool_csv_query_value(request.query_params.get("is_active"))
-    if is_active_values:
-        queryset = queryset.filter(is_active__in=is_active_values)
-    return queryset
+    return CategoryFilter(request.query_params, queryset=queryset).qs
 
 
 def _unit_queryset(request):
     queryset = ProductUnit.objects.all()
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(code__icontains=search) | Q(name__icontains=search)
-        )
-
-    for param, field in {"code": "code", "name": "name"}.items():
-        for lookup in ("icontains", "istartswith", "iendswith"):
-            value = request.query_params.get(f"{param}__{lookup}")
-            if value:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-        exact = request.query_params.get(param)
-        if exact:
-            queryset = queryset.filter(**{field: exact})
-
-    is_active_values = parse_bool_csv_query_value(request.query_params.get("is_active"))
-    if is_active_values:
-        queryset = queryset.filter(is_active__in=is_active_values)
-    return queryset
+    return ProductUnitFilter(request.query_params, queryset=queryset).qs
 
 
 def _product_queryset(request):
     queryset = Product.objects.select_related("category", "unit").all()
-    search = request.query_params.get("search")
     store_id = request.query_params.get("store") or request.query_params.get("store_id")
 
-    if search:
-        queryset = queryset.filter(
-            Q(reference__icontains=search)
-            | Q(barcode__icontains=search)
-            | Q(name__icontains=search)
-        )
-
-    queryset = _apply_product_filters(request, queryset)
+    queryset = ProductFilter(request.query_params, queryset=queryset).qs
     if store_id:
         allowed = set(user_store_ids(request.user))
         if request.user.is_staff or int(store_id) in allowed:
@@ -104,84 +61,6 @@ def _product_queryset(request):
                 )
             )
     return queryset
-
-
-def _apply_product_filters(request, queryset):
-    params = request.query_params
-    category_ids = _parse_int_csv(params.get("category_ids"))
-    unit_ids = _parse_int_csv(params.get("unit_ids"))
-    if category_ids:
-        queryset = queryset.filter(category_id__in=category_ids)
-    if unit_ids:
-        queryset = queryset.filter(unit_id__in=unit_ids)
-
-    text_fields = {
-        "reference": "reference",
-        "barcode": "barcode",
-        "name": "name",
-        "category_name": "category__name",
-        "unit_name": "unit__name",
-    }
-    for param, field in text_fields.items():
-        for lookup in ("icontains", "istartswith", "iendswith"):
-            value = params.get(f"{param}__{lookup}")
-            if value:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-        exact = params.get(param)
-        if exact:
-            queryset = queryset.filter(**{field: exact})
-
-    bool_values = parse_bool_csv_query_value(params.get("is_active"))
-    if bool_values:
-        queryset = queryset.filter(is_active__in=bool_values)
-
-    numeric_fields = {
-        "purchase_price": "purchase_price",
-        "wholesale_price": "wholesale_price",
-        "detail_price": "detail_price",
-        "counter_price": "counter_price",
-        "default_stock_alert": "default_stock_alert",
-    }
-    numeric_lookups = {
-        "gt": "gt",
-        "gte": "gte",
-        "lt": "lt",
-        "lte": "lte",
-        "ne": None,
-    }
-    for param, field in numeric_fields.items():
-        exact = params.get(param)
-        if exact not in (None, ""):
-            queryset = queryset.filter(**{field: exact})
-        for suffix, lookup in numeric_lookups.items():
-            value = params.get(f"{param}__{suffix}")
-            if value in (None, ""):
-                continue
-            if lookup is None:
-                queryset = queryset.exclude(**{field: value})
-            else:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-
-    expiration_after = params.get("expiration_date_after")
-    expiration_before = params.get("expiration_date_before")
-    if expiration_after:
-        queryset = queryset.filter(expiration_date__gte=expiration_after)
-    if expiration_before:
-        queryset = queryset.filter(expiration_date__lte=expiration_before)
-
-    return queryset
-
-
-def _parse_int_csv(value):
-    if not value:
-        return []
-    ids = []
-    for item in str(value).split(","):
-        try:
-            ids.append(int(item))
-        except (TypeError, ValueError):
-            continue
-    return ids
 
 
 def _ensure_product_management_access(request):

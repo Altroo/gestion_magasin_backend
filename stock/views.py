@@ -17,6 +17,14 @@ from catalog.models import Product
 from gestion_magasin_backend.utils import CustomPagination, parse_bool_csv_query_value
 from notification.models import Notification
 from notification.tasks import _broadcast
+from stock.filters import (
+    InventorySessionFilter,
+    PurchaseFilter,
+    StockAddRequestFilter,
+    StockBalanceFilter,
+    StockMovementFilter,
+    StockTransferFilter,
+)
 from store.models import Role, Store
 from stock.models import (
     InventoryLine,
@@ -79,99 +87,14 @@ def _stock_balance_base_queryset(request):
 
 def _stock_balance_queryset(request):
     queryset = _stock_balance_base_queryset(request)
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    search = request.query_params.get("search")
     low_values = set(parse_bool_csv_query_value(request.query_params.get("low")))
 
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    if search:
-        queryset = queryset.filter(
-            Q(product__name__icontains=search)
-            | Q(product__reference__icontains=search)
-            | Q(product__barcode__icontains=search)
-            | Q(store__name__icontains=search)
-        )
-
-    queryset = _apply_stock_balance_filters(request, queryset)
+    queryset = StockBalanceFilter(request.query_params, queryset=queryset).qs
     if low_values == {True}:
         return [balance for balance in queryset if balance.is_low_stock]
     if low_values == {False}:
         return [balance for balance in queryset if not balance.is_low_stock]
     return queryset
-
-
-def _apply_stock_balance_filters(request, queryset):
-    params = request.query_params
-    store_ids = _parse_int_csv(params.get("store_ids"))
-    category_ids = _parse_int_csv(params.get("category_ids"))
-    unit_ids = _parse_int_csv(params.get("unit_ids"))
-    exclude_global_values = set(parse_bool_csv_query_value(params.get("exclude_global_stock")))
-    if store_ids:
-        queryset = queryset.filter(store_id__in=store_ids)
-    if exclude_global_values == {True}:
-        queryset = queryset.filter(store__is_global_stock=False)
-    elif exclude_global_values == {False}:
-        queryset = queryset.filter(store__is_global_stock=True)
-    if category_ids:
-        queryset = queryset.filter(product__category_id__in=category_ids)
-    if unit_ids:
-        queryset = queryset.filter(product__unit_id__in=unit_ids)
-
-    text_fields = {
-        "product_name": "product__name",
-        "product_reference": "product__reference",
-        "product_barcode": "product__barcode",
-        "category_name": "product__category__name",
-        "unit_name": "product__unit__name",
-        "store_name": "store__name",
-    }
-    for param, field in text_fields.items():
-        for lookup in ("icontains", "istartswith", "iendswith"):
-            value = params.get(f"{param}__{lookup}")
-            if value:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-        exact = params.get(param)
-        if exact:
-            queryset = queryset.filter(**{field: exact})
-
-    numeric_fields = {
-        "quantity": "quantity",
-        "min_stock": "min_stock",
-        "average_cost": "average_cost",
-    }
-    numeric_lookups = {
-        "gt": "gt",
-        "gte": "gte",
-        "lt": "lt",
-        "lte": "lte",
-        "ne": None,
-    }
-    for param, field in numeric_fields.items():
-        exact = params.get(param)
-        if exact not in (None, ""):
-            queryset = queryset.filter(**{field: exact})
-        for suffix, lookup in numeric_lookups.items():
-            value = params.get(f"{param}__{suffix}")
-            if value in (None, ""):
-                continue
-            if lookup is None:
-                queryset = queryset.exclude(**{field: value})
-            else:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-    return queryset
-
-
-def _parse_int_csv(value):
-    if not value:
-        return []
-    ids = []
-    for item in str(value).split(","):
-        try:
-            ids.append(int(item))
-        except (TypeError, ValueError):
-            continue
-    return ids
 
 
 def _get_stock_balance_for_user(request, pk):
@@ -216,24 +139,7 @@ def _stock_add_request_queryset(request):
             | Q(store_id__in=allowed_store_ids, requested_by=request.user)
         )
 
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    status_value = request.query_params.get("status")
-    if status_value:
-        queryset = queryset.filter(
-            status__in=[item.strip() for item in str(status_value).split(",") if item.strip()]
-        )
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(store__name__icontains=search)
-            | Q(product__name__icontains=search)
-            | Q(product__reference__icontains=search)
-            | Q(product__barcode__icontains=search)
-            | Q(note__icontains=search)
-        ).distinct()
-    return queryset
+    return StockAddRequestFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_stock_add_request_for_user(request, pk):
@@ -515,10 +421,7 @@ def _stock_movement_queryset(request):
     queryset = StockMovement.objects.select_related("store", "product", "created_by")
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    return queryset
+    return StockMovementFilter(request.query_params, queryset=queryset).qs
 
 
 class StockMovementListView(APIView):
@@ -554,35 +457,7 @@ def _stock_transfer_queryset(request):
     if not request.user.is_staff:
         allowed_ids = user_store_ids(request.user)
         queryset = queryset.filter(target_store_id__in=allowed_ids)
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(target_store_id=store_id)
-    target_store_ids = _parse_int_csv(
-        request.query_params.get("target_store_ids")
-        or request.query_params.get("target_store")
-        or request.query_params.get("target_store_id")
-    )
-    if target_store_ids:
-        queryset = queryset.filter(target_store_id__in=target_store_ids)
-
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(reference__icontains=search)
-            | Q(note__icontains=search)
-            | Q(target_store__name__icontains=search)
-            | Q(lines__product__name__icontains=search)
-            | Q(lines__product__reference__icontains=search)
-        ).distinct()
-
-    status_value = request.query_params.get("status")
-    if status_value:
-        queryset = queryset.filter(
-            status__in=[
-                item.strip() for item in str(status_value).split(",") if item.strip()
-            ]
-        )
-    return queryset
+    return StockTransferFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_stock_transfer_for_user(request, pk):
@@ -752,58 +627,7 @@ def _purchase_queryset(request):
     )
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    store_ids = _parse_int_csv(
-        request.query_params.get("store_ids")
-        or request.query_params.get("stores")
-    )
-    if store_ids:
-        queryset = queryset.filter(store_id__in=store_ids)
-    supplier_names = [
-        item.strip()
-        for item in str(
-            request.query_params.get("supplier_names")
-            or request.query_params.get("suppliers")
-            or ""
-        ).split(",")
-        if item.strip()
-    ]
-    if supplier_names:
-        supplier_query = Q()
-        for supplier_name in supplier_names:
-            supplier_query |= Q(supplier_name__iexact=supplier_name)
-        queryset = queryset.filter(supplier_query)
-
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(reference__icontains=search)
-            | Q(supplier_name__icontains=search)
-            | Q(note__icontains=search)
-            | Q(lines__product__name__icontains=search)
-            | Q(lines__product__reference__icontains=search)
-        ).distinct()
-
-    for field in ("status",):
-        value = request.query_params.get(field)
-        if value:
-            queryset = queryset.filter(
-                **{
-                    f"{field}__in": [
-                        item.strip() for item in str(value).split(",") if item.strip()
-                    ]
-                }
-            )
-
-    date_after = request.query_params.get("purchase_date_after")
-    date_before = request.query_params.get("purchase_date_before")
-    if date_after:
-        queryset = queryset.filter(purchase_date__gte=date_after)
-    if date_before:
-        queryset = queryset.filter(purchase_date__lte=date_before)
-    return queryset
+    return PurchaseFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_purchase_for_user(request, pk):
@@ -985,28 +809,7 @@ def _inventory_queryset(request):
     )
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(code__icontains=search)
-            | Q(title__icontains=search)
-            | Q(note__icontains=search)
-            | Q(lines__product__name__icontains=search)
-            | Q(lines__product__reference__icontains=search)
-        ).distinct()
-
-    status_value = request.query_params.get("status")
-    if status_value:
-        queryset = queryset.filter(
-            status__in=[
-                item.strip() for item in str(status_value).split(",") if item.strip()
-            ]
-        )
-    return queryset
+    return InventorySessionFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_inventory_for_user(request, pk):

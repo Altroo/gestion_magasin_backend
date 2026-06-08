@@ -1,5 +1,5 @@
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.http import Http404, HttpResponse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions, status
@@ -8,6 +8,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from attendance.filters import AttendanceRecordFilter, EmployeeFilter
 from attendance.importers import import_attendance_from_workbook
 from attendance.models import AttendanceImportBatch, AttendanceRecord, Employee
 from attendance.serializers import (
@@ -16,7 +17,7 @@ from attendance.serializers import (
     EmployeeSerializer,
 )
 from attendance.workbooks import build_attendance_workbook
-from gestion_magasin_backend.utils import CustomPagination, split_csv_query_value
+from gestion_magasin_backend.utils import CustomPagination
 from store.permissions import MANAGEMENT_ROLES, get_store_from_request, user_has_store_access, user_store_ids
 
 
@@ -36,10 +37,7 @@ def _employee_queryset(request):
     queryset = Employee.objects.select_related("store", "user")
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    return queryset
+    return EmployeeFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_employee_for_user(request, pk):
@@ -102,87 +100,13 @@ def _attendance_queryset(request):
     queryset = AttendanceRecord.objects.select_related("store", "employee", "created_by")
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    employee_id = request.query_params.get("employee")
-    date_from = request.query_params.get("date_from")
-    date_to = request.query_params.get("date_to")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    store_ids = split_csv_query_value(request.query_params.get("store_ids"))
-    if store_ids:
-        queryset = queryset.filter(store_id__in=store_ids)
-    if employee_id:
-        queryset = queryset.filter(employee_id=employee_id)
-    employee_ids = split_csv_query_value(request.query_params.get("employee_ids"))
-    if employee_ids:
-        queryset = queryset.filter(employee_id__in=employee_ids)
-    if date_from:
-        queryset = queryset.filter(date__gte=date_from)
-    if date_to:
-        queryset = queryset.filter(date__lte=date_to)
-    return _apply_attendance_filters(request, queryset)
+    return AttendanceRecordFilter(request.query_params, queryset=queryset).qs
 
 
 def _attendance_base_queryset(request):
     queryset = AttendanceRecord.objects.select_related("store", "employee", "created_by")
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    return queryset
-
-
-def _apply_attendance_filters(request, queryset):
-    params = request.query_params
-    search = params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(employee__full_name__icontains=search)
-            | Q(responsible__icontains=search)
-            | Q(observations__icontains=search)
-            | Q(store__name__icontains=search)
-        )
-    values = split_csv_query_value(params.get("status"))
-    if values:
-        queryset = queryset.filter(status__in=values)
-    values = split_csv_query_value(params.get("shift"))
-    if values:
-        queryset = queryset.filter(shift__in=values)
-
-    text_fields = {
-        "store_name": "store__name",
-        "employee_name": "employee__full_name",
-        "responsible": "responsible",
-        "observations": "observations",
-        "created_by_email": "created_by__email",
-    }
-    for param, field in text_fields.items():
-        for lookup in ("icontains", "istartswith", "iendswith"):
-            value = params.get(f"{param}__{lookup}")
-            if value:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-        exact = params.get(param)
-        if exact:
-            queryset = queryset.filter(**{field: exact})
-
-    numeric_lookups = {"gt": "gt", "gte": "gte", "lt": "lt", "lte": "lte", "ne": None}
-    for param, field in {"hours_worked": "hours_worked", "delay_minutes": "delay_minutes"}.items():
-        exact = params.get(param)
-        if exact not in (None, ""):
-            queryset = queryset.filter(**{field: exact})
-        for suffix, lookup in numeric_lookups.items():
-            value = params.get(f"{param}__{suffix}")
-            if value in (None, ""):
-                continue
-            if lookup is None:
-                queryset = queryset.exclude(**{field: value})
-            else:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-
-    date_after = params.get("date_after")
-    date_before = params.get("date_before")
-    if date_after:
-        queryset = queryset.filter(date__gte=date_after)
-    if date_before:
-        queryset = queryset.filter(date__lte=date_before)
     return queryset
 
 

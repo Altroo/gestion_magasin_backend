@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Sum
 from django.http import Http404
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from catalog.models import Product
 from gestion_magasin_backend.utils import CustomPagination, split_csv_query_value
+from sales.filters import CustomerFilter, PaymentModeFilter, PromotionFilter, SaleFilter
 from sales.models import Customer, PaymentMode, Promotion, PromotionLine, Sale
 from sales.serializers import (
     CustomerSerializer,
@@ -47,10 +48,7 @@ def _customer_queryset(request):
     queryset = Customer.objects.select_related("store")
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    return queryset
+    return CustomerFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_customer_for_user(request, pk):
@@ -140,7 +138,10 @@ class PaymentModeListCreateView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        return _paginate(request, PaymentMode.objects.all(), PaymentModeSerializer)
+        queryset = PaymentModeFilter(
+            request.query_params, queryset=PaymentMode.objects.all()
+        ).qs
+        return _paginate(request, queryset, PaymentModeSerializer)
 
     @staticmethod
     def post(request, *args, **kwargs):
@@ -198,27 +199,7 @@ def _promotion_queryset(request):
     )
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(name__icontains=search)
-            | Q(note__icontains=search)
-            | Q(lines__product__name__icontains=search)
-            | Q(lines__product__reference__icontains=search)
-        ).distinct()
-
-    status_value = request.query_params.get("status")
-    if status_value:
-        queryset = queryset.filter(
-            status__in=[
-                item.strip() for item in str(status_value).split(",") if item.strip()
-            ]
-        )
-    return queryset
+    return PromotionFilter(request.query_params, queryset=queryset).qs
 
 
 def _get_promotion_for_user(request, pk):
@@ -561,79 +542,7 @@ def _sale_queryset(request):
     )
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-    return _apply_sale_filters(request, queryset)
-
-
-def _apply_sale_filters(request, queryset):
-    params = request.query_params
-    search = params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(store__name__icontains=search)
-            | Q(seller__email__icontains=search)
-            | Q(customer__full_name__icontains=search)
-            | Q(lines__product__name__icontains=search)
-            | Q(lines__product__reference__icontains=search)
-            | Q(lines__product__barcode__icontains=search)
-        ).distinct()
-
-    for field in ("status", "payment_status"):
-        values = split_csv_query_value(params.get(field))
-        if values:
-            queryset = queryset.filter(**{f"{field}__in": values})
-
-    payment_mode_values = split_csv_query_value(
-        params.get("payment_mode") or params.get("payment_mode_ids")
-    )
-    if payment_mode_values:
-        queryset = queryset.filter(payment_mode_id__in=payment_mode_values)
-
-    text_fields = {
-        "store_name": "store__name",
-        "seller_email": "seller__email",
-        "customer_name": "customer__full_name",
-        "payment_mode_name": "payment_mode__name",
-    }
-    for param, field in text_fields.items():
-        for lookup in ("icontains", "istartswith", "iendswith"):
-            value = params.get(f"{param}__{lookup}")
-            if value:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-        exact = params.get(param)
-        if exact:
-            queryset = queryset.filter(**{field: exact})
-
-    numeric_fields = {
-        "subtotal": "subtotal",
-        "discount_amount": "discount_amount",
-        "total": "total",
-        "paid_amount": "paid_amount",
-        "change_amount": "change_amount",
-    }
-    numeric_lookups = {"gt": "gt", "gte": "gte", "lt": "lt", "lte": "lte", "ne": None}
-    for param, field in numeric_fields.items():
-        exact = params.get(param)
-        if exact not in (None, ""):
-            queryset = queryset.filter(**{field: exact})
-        for suffix, lookup in numeric_lookups.items():
-            value = params.get(f"{param}__{suffix}")
-            if value in (None, ""):
-                continue
-            if lookup is None:
-                queryset = queryset.exclude(**{field: value})
-            else:
-                queryset = queryset.filter(**{f"{field}__{lookup}": value})
-
-    date_after = params.get("date_created_after")
-    date_before = params.get("date_created_before")
-    if date_after:
-        queryset = queryset.filter(date_created__date__gte=date_after)
-    if date_before:
-        queryset = queryset.filter(date_created__date__lte=date_before)
-    return queryset
+    return SaleFilter(request.query_params, queryset=queryset).qs
 
 
 def _sale_base_queryset(request):

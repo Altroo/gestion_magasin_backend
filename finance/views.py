@@ -1,5 +1,4 @@
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
 from django.http import Http404
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
@@ -7,25 +6,16 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from finance.filters import ExpenseCategoryFilter, ExpenseFilter
 from finance.models import Expense, ExpenseCategory
 from finance.serializers import ExpenseCategorySerializer, ExpenseSerializer
-from gestion_magasin_backend.utils import (
-    CustomPagination,
-    parse_bool_csv_query_value,
-    split_csv_query_value,
-)
+from gestion_magasin_backend.utils import CustomPagination
 from store.permissions import MANAGEMENT_ROLES, get_store_from_request, user_has_store_access, user_store_ids
 
 
 def _category_queryset(request):
     queryset = ExpenseCategory.objects.all().order_by("name")
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(Q(code__icontains=search) | Q(name__icontains=search))
-    active_values = parse_bool_csv_query_value(request.query_params.get("is_active"))
-    if active_values:
-        queryset = queryset.filter(is_active__in=active_values)
-    return queryset
+    return ExpenseCategoryFilter(request.query_params, queryset=queryset).qs
 
 
 def _expense_queryset(request):
@@ -33,43 +23,9 @@ def _expense_queryset(request):
     if not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
 
-    store_id = request.query_params.get("store") or request.query_params.get("store_id")
-    if store_id:
-        queryset = queryset.filter(store_id=store_id)
-
-    store_ids = split_csv_query_value(request.query_params.get("store_ids"))
-    if store_ids:
-        queryset = queryset.filter(store_id__in=store_ids)
-
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(label__icontains=search)
-            | Q(category__name__icontains=search)
-            | Q(note__icontains=search)
-        )
-
-    for field in ("payment_status", "payment_mode"):
-        values = split_csv_query_value(request.query_params.get(field))
-        if values:
-            queryset = queryset.filter(**{f"{field}__in": values})
-
-    category = request.query_params.get("category")
-    if category:
-        queryset = queryset.filter(category_id=category)
-
-    category_ids = split_csv_query_value(request.query_params.get("category_ids"))
-    if category_ids:
-        queryset = queryset.filter(category_id__in=category_ids)
-
-    date_after = request.query_params.get("expense_date_after")
-    date_before = request.query_params.get("expense_date_before")
-    if date_after:
-        queryset = queryset.filter(expense_date__gte=date_after)
-    if date_before:
-        queryset = queryset.filter(expense_date__lte=date_before)
-
-    return queryset.order_by("-expense_date", "-id")
+    return ExpenseFilter(request.query_params, queryset=queryset).qs.order_by(
+        "-expense_date", "-id"
+    )
 
 
 def _get_expense_for_user(request, pk: int) -> Expense:

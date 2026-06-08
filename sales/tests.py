@@ -195,6 +195,24 @@ def test_promotions_bulk_delete_removes_selected_promotions():
     assert not Promotion.objects.filter(pk__in=[first.pk, second.pk]).exists()
 
 
+def test_payment_mode_list_filters_active_modes():
+    user = create_user("payment-mode-filter@example.com")
+    active = PaymentMode.objects.create(
+        code="active-filter-test", name="Actif filtre", is_active=True
+    )
+    inactive = PaymentMode.objects.create(
+        code="inactive-filter-test", name="Inactif filtre", is_active=False
+    )
+    client = authenticated_client(user)
+
+    response = client.get("/api/sales/payment-modes/", {"is_active": "true"})
+
+    assert response.status_code == status.HTTP_200_OK
+    ids = {item["id"] for item in response.data["results"]}
+    assert active.pk in ids
+    assert inactive.pk not in ids
+
+
 def test_promotion_eligible_stores_marks_missing_stock_as_disabled():
     staff = create_user("promotion-admin@example.com")
     staff.is_staff = True

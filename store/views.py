@@ -6,7 +6,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from gestion_magasin_backend.utils import CustomPagination, parse_bool_csv_query_value
+from gestion_magasin_backend.utils import CustomPagination
+from store.filters import StoreFilter, StoreMembershipFilter
 from store.models import Role, Store, StoreMembership
 from store.permissions import user_store_ids
 from store.serializers import (
@@ -71,21 +72,7 @@ def _filtered_stores_for_user(request):
     ).exclude(Q(is_global_stock=True) | Q(code="mbr-south"))
     if not request.user.is_staff:
         queryset = queryset.filter(id__in=user_store_ids(request.user))
-
-    search = request.query_params.get("search")
-    if search:
-        queryset = queryset.filter(
-            Q(name__icontains=search)
-            | Q(code__icontains=search)
-            | Q(address__icontains=search)
-            | Q(phone__icontains=search)
-        )
-
-    is_active_values = parse_bool_csv_query_value(request.query_params.get("is_active"))
-    if is_active_values:
-        queryset = queryset.filter(is_active__in=is_active_values)
-
-    return queryset
+    return StoreFilter(request.query_params, queryset=queryset).qs
 
 
 class RoleListView(APIView):
@@ -233,6 +220,7 @@ class StoreMembershipListCreateView(APIView):
         queryset = StoreMembership.objects.select_related(
             "user", "store", "role"
         ).order_by("store__name", "user__email")
+        queryset = StoreMembershipFilter(request.query_params, queryset=queryset).qs
         page = paginator.paginate_queryset(queryset, request)
         serializer = StoreMembershipSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)

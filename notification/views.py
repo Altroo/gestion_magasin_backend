@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from gestion_magasin_backend.utils import CustomPagination
+from notification.filters import NotificationFilter
 from notification.models import Notification, NotificationPreference
 from notification.serializers import (
     NotificationPreferenceSerializer,
@@ -33,6 +34,7 @@ class NotificationListView(APIView):
     @staticmethod
     def get(request):
         qs = Notification.objects.filter(user=request.user).select_related("store", "product")
+        qs = NotificationFilter(request.query_params, queryset=qs).qs
         paginator = CustomPagination()
         paginator.page_size = 10
         page = paginator.paginate_queryset(qs, request)
@@ -60,4 +62,3 @@ class NotificationUnreadCountView(APIView):
     def get(request):
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({"count": count}, status=status.HTTP_200_OK)
-
