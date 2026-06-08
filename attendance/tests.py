@@ -196,12 +196,14 @@ def test_attendance_export_workbook_matches_import_layout():
     assert response["Content-Disposition"] == 'attachment; filename="pointage.xlsx"'
     workbook = load_workbook(BytesIO(b"".join(response.streaming_content) if getattr(response, "streaming", False) else response.content))
     sheet = workbook["Pointage"]
-    assert sheet["A2"].value == "FICHE DE POINTAGE HEBDOMADAIRE -MBR SOUTH"
+    assert sheet["A2"].value == "FICHE DE POINTAGE HEBDOMADAIRE-MBR SOUTH"
+    assert str(next(iter(sheet.merged_cells.ranges))) == "A2:K3"
+    assert sheet.auto_filter.ref == "A5:K6"
     assert [sheet.cell(5, column).value for column in range(1, 12)] == [
         "Date",
         "Jour",
         "Nom salarié",
-        "Heure entrée",
+        "Heure  entrée",
         "Début pause",
         "Fin pause",
         "Heure sortie",
@@ -210,8 +212,11 @@ def test_attendance_export_workbook_matches_import_layout():
         "Retard",
         "Observations",
     ]
+    assert sheet["B6"].value == "Mercredi"
     assert sheet["C6"].value == "Employé test"
     assert sheet["D6"].value == "9H"
+    assert sheet["J6"].value == 0
+    assert sheet.column_dimensions["K"].width == 25
 
 
 def test_attendance_import_guide_email_requires_management_access():

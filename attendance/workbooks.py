@@ -3,14 +3,13 @@ from io import BytesIO
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
 
 
 POINTAGE_HEADERS = [
     "Date",
     "Jour",
     "Nom salarié",
-    "Heure entrée",
+    "Heure  entrée",
     "Début pause",
     "Fin pause",
     "Heure sortie",
@@ -20,18 +19,35 @@ POINTAGE_HEADERS = [
     "Observations",
 ]
 
+POINTAGE_COLUMN_WIDTHS = {
+    "A": 13.21875,
+    "B": 15.44140625,
+    "C": 16.88671875,
+    "D": 11.5546875,
+    "E": 10.44140625,
+    "F": 10.21875,
+    "G": 9.6640625,
+    "H": 13,
+    "I": 13,
+    "J": 13,
+    "K": 25,
+}
+
+FRENCH_DAYS = {
+    0: "Lundi",
+    1: "Mardi",
+    2: "Mercredi",
+    3: "Jeudi",
+    4: "Vendredi",
+    5: "Samedi",
+    6: "Dimanche",
+}
+
 
 def _format_time(value: time | None) -> str:
     if not value:
         return ""
     return f"{value.hour}H{value.minute:02d}" if value.minute else f"{value.hour}H"
-
-
-def _format_delay(minutes: int | None) -> str:
-    if not minutes:
-        return "0:00"
-    hours, remainder = divmod(int(minutes), 60)
-    return f"{hours}:{remainder:02d}"
 
 
 def _status_label(status: str | None) -> str:
@@ -51,30 +67,43 @@ def _shift_label(shift: str | None) -> str:
 
 
 def _day_label(value: date | None) -> str:
-    return value.strftime("%A") if value else ""
-
-
-def _auto_width(sheet):
-    for column_cells in sheet.columns:
-        column_letter = get_column_letter(column_cells[0].column)
-        max_length = max(len(str(cell.value or "")) for cell in column_cells)
-        sheet.column_dimensions[column_letter].width = min(max(max_length + 3, 12), 34)
+    return FRENCH_DAYS[value.weekday()] if value else ""
 
 
 def _style_sheet(sheet):
-    blue_fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid")
-    header_fill = PatternFill(start_color="EAF3FF", end_color="EAF3FF", fill_type="solid")
-    title_font = Font(bold=True, size=14)
-    header_font = Font(bold=True)
-    thin_border = Border(bottom=Side(style="thin", color="D9D9D9"))
+    title_fill = PatternFill(start_color="C5E0B4", end_color="C5E0B4", fill_type="solid")
+    header_fill = PatternFill(start_color="A9D18E", end_color="A9D18E", fill_type="solid")
+    title_font = Font(name="Calibri", size=14, bold=False)
+    header_font = Font(name="Calibri", size=12, bold=False)
+    data_font = Font(name="Calibri", size=11, bold=False)
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+    medium_border = Border(
+        left=Side(style="medium"),
+        right=Side(style="medium"),
+        top=Side(style="medium"),
+        bottom=Side(style="medium"),
+    )
 
-    sheet.merge_cells("A2:K2")
+    sheet.sheet_view.showGridLines = None
+    sheet.row_dimensions[1].height = 15
+    sheet.row_dimensions[3].height = 15
+    sheet.row_dimensions[4].height = 25.2
+    sheet.row_dimensions[5].height = 33
+    for column_letter, width in POINTAGE_COLUMN_WIDTHS.items():
+        sheet.column_dimensions[column_letter].width = width
+
+    sheet.merge_cells("A2:K3")
+    for row in sheet.iter_rows(min_row=2, max_row=3, min_col=1, max_col=11):
+        for cell in row:
+            cell.fill = title_fill
+            cell.border = medium_border
     sheet["A2"].font = title_font
-    sheet["A2"].fill = blue_fill
-    sheet["A2"].alignment = Alignment(horizontal="center")
-
-    for cell in sheet[3]:
-        cell.font = header_font if cell.column in (1, 4, 7, 9) else Font()
+    sheet["A2"].alignment = Alignment(horizontal="center", vertical="center")
 
     for cell in sheet[5]:
         cell.font = header_font
@@ -84,10 +113,15 @@ def _style_sheet(sheet):
 
     for row in sheet.iter_rows(min_row=6):
         for cell in row:
+            cell.font = data_font
             cell.border = thin_border
-            cell.alignment = Alignment(vertical="center")
+            if cell.column == 1:
+                cell.alignment = Alignment(horizontal="left")
+                cell.number_format = "mm-dd-yy"
+            elif cell.column < 11:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    _auto_width(sheet)
+    sheet.auto_filter.ref = f"A5:K{max(sheet.max_row, 5)}"
 
 
 def build_attendance_workbook(records, *, responsible="", week_start=None, week_end=None) -> bytes:
@@ -96,20 +130,8 @@ def build_attendance_workbook(records, *, responsible="", week_start=None, week_
     sheet.title = "Pointage"
 
     sheet.append([None] * len(POINTAGE_HEADERS))
-    sheet.append(["FICHE DE POINTAGE HEBDOMADAIRE -MBR SOUTH", *([None] * 10)])
-    sheet.append([
-        "Responsable",
-        responsible or "",
-        None,
-        "Semaine du",
-        week_start or "",
-        None,
-        "au",
-        week_end or "",
-        "Envoyé le",
-        date.today(),
-        None,
-    ])
+    sheet.append(["FICHE DE POINTAGE HEBDOMADAIRE-MBR SOUTH", *([None] * 10)])
+    sheet.append([None] * len(POINTAGE_HEADERS))
     sheet.append([None] * len(POINTAGE_HEADERS))
     sheet.append(POINTAGE_HEADERS)
 
@@ -126,8 +148,8 @@ def build_attendance_workbook(records, *, responsible="", week_start=None, week_
             _format_time(record.clock_out),
             _status_label(record.status),
             _shift_label(record.shift),
-            _format_delay(record.delay_minutes),
-            record.observations or "",
+            int(record.delay_minutes or 0),
+            record.observations or None,
         ])
 
     _style_sheet(sheet)
