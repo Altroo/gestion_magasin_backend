@@ -1256,6 +1256,22 @@ class TestCreateAccountSerializerExtra:
         user = ser.save()
         assert user.avatar_cropped is not None
 
+    def test_create_non_admin_cannot_keep_promotion_permission(self):
+        ser = CreateAccountSerializer(
+            data={
+                "email": "no_promo@example.com",
+                "password": "testpass123",
+                "first_name": "No",
+                "last_name": "Promo",
+                "is_staff": False,
+                "can_create_promotion": True,
+            }
+        )
+        assert ser.is_valid(), ser.errors
+        user = ser.save()
+        assert user.is_staff is False
+        assert user.can_create_promotion is False
+
 
 @pytest.mark.django_db
 class TestProfilePutSerializerExtra:
@@ -2045,6 +2061,20 @@ class TestUserPatchSerializer:
         assert serializer.is_valid(), serializer.errors
         updated = serializer.save()
         assert updated.is_staff is True
+
+    def test_update_non_admin_clears_promotion_permission(self):
+        self.user.is_staff = True
+        self.user.can_create_promotion = True
+        self.user.save(update_fields=["is_staff", "can_create_promotion"])
+        serializer = UserPatchSerializer(
+            instance=self.user,
+            data={"is_staff": False, "can_create_promotion": True},
+            partial=True,
+        )
+        assert serializer.is_valid(), serializer.errors
+        updated = serializer.save()
+        assert updated.is_staff is False
+        assert updated.can_create_promotion is False
 
     def test_read_only_email_ignored(self):
         """Email is read-only; attempting to change it is silently ignored."""

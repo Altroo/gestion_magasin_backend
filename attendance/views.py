@@ -1,6 +1,6 @@
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q, Sum
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
@@ -15,6 +15,7 @@ from attendance.serializers import (
     AttendanceRecordSerializer,
     EmployeeSerializer,
 )
+from attendance.workbooks import build_attendance_workbook
 from gestion_magasin_backend.utils import CustomPagination, split_csv_query_value
 from store.permissions import MANAGEMENT_ROLES, get_store_from_request, user_has_store_access, user_store_ids
 
@@ -285,6 +286,49 @@ class AttendanceImportWorkbookView(APIView):
             file_name=file_obj.name,
         )
         return Response(AttendanceImportBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
+
+
+class AttendanceExportWorkbookView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        responsible = " ".join(
+            part for part in (request.user.first_name, request.user.last_name) if part
+        ) or request.user.email
+        records = list(
+            _attendance_queryset(request)
+            .select_related("store", "employee")
+            .order_by("date", "employee__full_name")
+        )
+        dates = [record.date for record in records if record.date]
+        content = build_attendance_workbook(
+            records,
+            responsible=responsible,
+            week_start=min(dates) if dates else None,
+            week_end=max(dates) if dates else None,
+        )
+        response = HttpResponse(
+            content,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="pointage.xlsx"'
+        return response
+
+
+class SendAttendanceImportGuideEmailView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        from account.tasks import send_attendance_import_guide_email
+
+        get_store_from_request(request, roles=MANAGEMENT_ROLES)
+        send_attendance_import_guide_email.apply_async((request.user.pk, request.user.email))
+        return Response(
+            {"message": _("Email envoyé avec succès.")},
+            status=status.HTTP_200_OK,
+        )
 
 
 class AttendanceSummaryView(APIView):

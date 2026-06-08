@@ -131,6 +131,42 @@ def send_csv_example_email(self, user_pk, email_):
 
 
 @app.task(bind=True, serializer="json", max_retries=3)
+def send_attendance_import_guide_email(self, user_pk, email_):
+    """Send the attendance import guide with an Excel template attached."""
+    try:
+        from attendance.workbooks import build_attendance_import_template
+
+        user = CustomUser.objects.get(pk=user_pk)
+        excel_content = build_attendance_import_template()
+        mail_subject = "Guide d'importation du pointage - E.B.H Gestion Magasin"
+        message = render_to_string(
+            "import_pointage_email_guide.html",
+            {
+                "first_name": user.first_name,
+            },
+        )
+
+        email = EmailMessage(subject=mail_subject, body=message, to=(email_,))
+        email.content_subtype = "html"
+        email.attach(
+            "modele_pointage.xlsx",
+            excel_content,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        email.send(fail_silently=False)
+    except ObjectDoesNotExist:
+        logger.error(
+            f"Utilisateur {user_pk} introuvable pour l'envoi du guide pointage"
+        )
+        return
+    except Exception as e:
+        logger.error(
+            f"Échec de l'envoi du guide pointage pour l'utilisateur {user_pk} : {e}"
+        )
+        raise self.retry(exc=e, countdown=60)
+
+
+@app.task(bind=True, serializer="json", max_retries=3)
 def start_deleting_expired_codes(self, user_pk, type_):
     try:
         user = CustomUser.objects.get(pk=user_pk)

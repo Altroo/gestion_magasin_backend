@@ -162,6 +162,8 @@ class CreateAccountSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         stores_data = validated_data.pop("stores", None)
+        if not validated_data.get("is_staff"):
+            validated_data["can_create_promotion"] = False
         avatar = self._process_image_field("avatar", validated_data)
         avatar_cropped = self._process_image_field("avatar_cropped", validated_data)
         validated_data.pop("avatar", None)
@@ -590,6 +592,9 @@ class UserPatchSerializer(ProfilePutSerializer):
 
     def update(self, instance, validated_data):
         stores_data = validated_data.pop("stores", None)
+        next_is_staff = validated_data.get("is_staff", instance.is_staff)
+        if not next_is_staff:
+            validated_data["can_create_promotion"] = False
         instance = super().update(instance, validated_data)
         _sync_store_memberships(instance, stores_data)
         return instance

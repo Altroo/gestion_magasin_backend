@@ -195,6 +195,111 @@ def test_promotions_bulk_delete_removes_selected_promotions():
     assert not Promotion.objects.filter(pk__in=[first.pk, second.pk]).exists()
 
 
+def test_promotion_eligible_stores_marks_missing_stock_as_disabled():
+    staff = create_user("promotion-admin@example.com")
+    staff.is_staff = True
+    staff.is_superuser = True
+    staff.can_create_promotion = True
+    staff.save(update_fields=["is_staff", "is_superuser", "can_create_promotion"])
+    category, _ = Category.objects.get_or_create(
+        code="promo-cat", defaults={"name": "Famille promotion"}
+    )
+    product = Product.objects.create(
+        reference="PROMO-001",
+        barcode="PROMO-001",
+        name="Article promotion eligible",
+        category=category,
+        purchase_price=Decimal("10.00"),
+        counter_price=Decimal("20.00"),
+        default_stock_alert=Decimal("1.000"),
+    )
+    eligible_store = Store.objects.create(
+        code="eligible-store", name="Magasin eligible", is_active=True
+    )
+    disabled_store = Store.objects.create(
+        code="disabled-store", name="Magasin disabled", is_active=True
+    )
+    StockBalance.objects.create(
+        store=eligible_store,
+        product=product,
+        quantity=Decimal("3.000"),
+        average_cost=Decimal("10.00"),
+    )
+    StockBalance.objects.create(
+        store=disabled_store,
+        product=product,
+        quantity=Decimal("1.000"),
+        average_cost=Decimal("10.00"),
+    )
+    client = authenticated_client(staff)
+
+    response = client.get(
+        "/api/sales/promotions/eligible-stores/",
+        {"product_ids": str(product.pk), "quantities": "2"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    eligibility = {item["id"]: item for item in response.data}
+    assert eligibility[eligible_store.pk]["is_eligible"] is True
+    assert eligibility[disabled_store.pk]["is_eligible"] is False
+    assert eligibility[disabled_store.pk]["missing_products"][0]["product"] == product.pk
+
+
+def test_staff_can_create_promotion_for_multiple_eligible_stores():
+    staff = create_user("promotion-bulk-admin@example.com")
+    staff.is_staff = True
+    staff.is_superuser = True
+    staff.can_create_promotion = True
+    staff.save(update_fields=["is_staff", "is_superuser", "can_create_promotion"])
+    category, _ = Category.objects.get_or_create(
+        code="promo-bulk-cat", defaults={"name": "Famille promotion bulk"}
+    )
+    product = Product.objects.create(
+        reference="PROMO-002",
+        barcode="PROMO-002",
+        name="Article promotion bulk",
+        category=category,
+        purchase_price=Decimal("8.00"),
+        counter_price=Decimal("18.00"),
+        default_stock_alert=Decimal("1.000"),
+    )
+    first_store = Store.objects.create(
+        code="promo-store-1", name="Magasin promo 1", is_active=True
+    )
+    second_store = Store.objects.create(
+        code="promo-store-2", name="Magasin promo 2", is_active=True
+    )
+    for store in (first_store, second_store):
+        StockBalance.objects.create(
+            store=store,
+            product=product,
+            quantity=Decimal("4.000"),
+            average_cost=Decimal("8.00"),
+        )
+    client = authenticated_client(staff)
+
+    response = client.post(
+        "/api/sales/promotions/",
+        {
+            "stores": [first_store.pk, second_store.pk],
+            "name": "Pack multi magasins",
+            "selling_price": "30.00",
+            "status": Promotion.Statuses.ACTIVE,
+            "lines": [{"product": product.pk, "quantity": "2"}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["count"] == 2
+    assert Promotion.objects.filter(name="Pack multi magasins").count() == 2
+    assert set(
+        Promotion.objects.filter(name="Pack multi magasins").values_list(
+            "store_id", flat=True
+        )
+    ) == {first_store.pk, second_store.pk}
+
+
 def test_low_stock_task_notifies_store_managers():
     responsible = create_user("responsable@example.com")
     store, product = create_store_setup(responsible, role_code=Role.Codes.RESPONSABLE)

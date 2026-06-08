@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import Http404
 from django.utils import timezone
@@ -25,6 +26,7 @@ from sales.serializers import (
 )
 from sales.services import create_sale, void_sale
 from stock.models import StockBalance
+from store.models import Store
 from store.permissions import (
     MANAGEMENT_ROLES,
     WRITE_ROLES,
@@ -252,6 +254,121 @@ def _create_promotion_from_validated_data(*, store, user, data):
     return promotion
 
 
+def _required_quantities_from_lines(lines_data):
+    required_quantities = {}
+    for line_data in lines_data:
+        product_id = int(line_data["product"])
+        required_quantities[product_id] = required_quantities.get(
+            product_id, Decimal("0")
+        ) + line_data["quantity"]
+    return required_quantities
+
+
+def _required_quantities_from_query(request):
+    product_ids = split_csv_query_value(request.query_params.get("product_ids"))
+    quantities = split_csv_query_value(request.query_params.get("quantities"))
+    if not product_ids:
+        raise ValidationError({"product_ids": _("Au moins un article est requis.")})
+    if quantities and len(quantities) != len(product_ids):
+        raise ValidationError(
+            {"quantities": _("Chaque article doit avoir une quantité correspondante.")}
+        )
+
+    required_quantities = {}
+    for index, raw_product_id in enumerate(product_ids):
+        try:
+            product_id = int(raw_product_id)
+            quantity = Decimal(quantities[index]) if quantities else Decimal("1")
+        except Exception:
+            raise ValidationError(
+                {"product_ids": _("Les articles et quantités sont invalides.")}
+            )
+        if quantity <= 0:
+            raise ValidationError({"quantities": _("La quantité doit être positive.")})
+        required_quantities[product_id] = required_quantities.get(
+            product_id, Decimal("0")
+        ) + quantity
+    return required_quantities
+
+
+def _active_products_by_id(product_ids):
+    products = {
+        product.pk: product
+        for product in Product.objects.filter(pk__in=product_ids, is_active=True)
+    }
+    missing_ids = [product_id for product_id in product_ids if product_id not in products]
+    if missing_ids:
+        raise ValidationError({"product_ids": _("Certains articles sont introuvables.")})
+    return products
+
+
+def _promotion_target_stores_queryset():
+    return (
+        Store.objects.filter(is_active=True, is_global_stock=False)
+        .exclude(code="mbr-south")
+        .order_by("name")
+    )
+
+
+def _promotion_store_eligibility(stores, required_quantities):
+    products = _active_products_by_id(required_quantities.keys())
+    store_list = list(stores)
+    balances = StockBalance.objects.filter(
+        store_id__in=[store.pk for store in store_list],
+        product_id__in=required_quantities.keys(),
+    ).values("store_id", "product_id", "quantity")
+    quantity_by_store_product = {
+        (balance["store_id"], balance["product_id"]): balance["quantity"]
+        for balance in balances
+    }
+    data = []
+    for store in store_list:
+        missing_products = []
+        for product_id, required_quantity in required_quantities.items():
+            available_quantity = quantity_by_store_product.get(
+                (store.pk, product_id), Decimal("0")
+            )
+            if available_quantity < required_quantity:
+                missing_products.append(
+                    {
+                        "product": product_id,
+                        "product_name": products[product_id].name,
+                        "required_quantity": str(required_quantity),
+                        "available_quantity": str(available_quantity),
+                    }
+                )
+        data.append(
+            {
+                "id": store.pk,
+                "name": store.name,
+                "code": store.code,
+                "address": store.address,
+                "phone": store.phone,
+                "is_active": store.is_active,
+                "is_global_stock": store.is_global_stock,
+                "is_eligible": not missing_products,
+                "missing_products": missing_products,
+            }
+        )
+    return data
+
+
+class PromotionEligibleStoresView(APIView):
+    permission_classes = (permissions.IsAdminUser,)
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        _ensure_promotion_create_permission(request.user)
+        required_quantities = _required_quantities_from_query(request)
+        return Response(
+            _promotion_store_eligibility(
+                _promotion_target_stores_queryset(),
+                required_quantities,
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+
 class PromotionListCreateView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -262,13 +379,57 @@ class PromotionListCreateView(APIView):
     @staticmethod
     def post(request, *args, **kwargs):
         _ensure_promotion_create_permission(request.user)
-        store = get_store_from_request(request, roles=WRITE_ROLES)
         serializer = PromotionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        target_store_ids = data.pop("stores", [])
+        if target_store_ids:
+            if not request.user.is_staff:
+                raise PermissionDenied(
+                    "Seule la direction peut créer une promotion multi-magasins."
+                )
+            target_store_ids = list(dict.fromkeys(int(item) for item in target_store_ids))
+            stores = list(_promotion_target_stores_queryset().filter(pk__in=target_store_ids))
+            if len(stores) != len(target_store_ids):
+                raise ValidationError(
+                    {"stores": _("Certains magasins sont introuvables.")}
+                )
+            required_quantities = _required_quantities_from_lines(data["lines"])
+            eligibility = _promotion_store_eligibility(stores, required_quantities)
+            ineligible = [item["name"] for item in eligibility if not item["is_eligible"]]
+            if ineligible:
+                raise ValidationError(
+                    {
+                        "stores": _(
+                            "Certains magasins n'ont pas tous les articles requis : %(stores)s."
+                        )
+                        % {"stores": ", ".join(ineligible)}
+                    }
+                )
+
+            promotions = []
+            with transaction.atomic():
+                for store in stores:
+                    promotions.append(
+                        _create_promotion_from_validated_data(
+                            store=store,
+                            user=request.user,
+                            data={**data, "lines": list(data["lines"])},
+                        )
+                    )
+            return Response(
+                {
+                    "count": len(promotions),
+                    "created": PromotionSerializer(promotions, many=True).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        store = get_store_from_request(request, roles=WRITE_ROLES)
         promotion = _create_promotion_from_validated_data(
             store=store,
             user=request.user,
-            data=dict(serializer.validated_data),
+            data=data,
         )
         return Response(
             PromotionSerializer(promotion).data,

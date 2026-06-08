@@ -1,8 +1,11 @@
 from datetime import date, time
+from io import BytesIO
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -169,6 +172,67 @@ def test_attendance_bulk_delete_removes_selected_records():
     assert response.status_code == status.HTTP_200_OK
     assert response.data["deleted"] == 2
     assert not AttendanceRecord.objects.filter(pk__in=[first.pk, second.pk]).exists()
+
+
+def test_attendance_export_workbook_matches_import_layout():
+    user, store, employee = create_store_setup()
+    AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 10),
+        clock_in=time(9, 0),
+        break_start=time(13, 30),
+        break_end=time(14, 0),
+        clock_out=time(17, 0),
+        hours_worked=Decimal("7.50"),
+        status=AttendanceRecord.Statuses.PRESENT,
+        shift=AttendanceRecord.Shifts.MORNING,
+    )
+    client = authenticated_client(user)
+
+    response = client.get("/api/pointage/export-workbook/", {"store": store.pk})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response["Content-Disposition"] == 'attachment; filename="pointage.xlsx"'
+    workbook = load_workbook(BytesIO(b"".join(response.streaming_content) if getattr(response, "streaming", False) else response.content))
+    sheet = workbook["Pointage"]
+    assert sheet["A2"].value == "FICHE DE POINTAGE HEBDOMADAIRE -MBR SOUTH"
+    assert [sheet.cell(5, column).value for column in range(1, 12)] == [
+        "Date",
+        "Jour",
+        "Nom salarié",
+        "Heure entrée",
+        "Début pause",
+        "Fin pause",
+        "Heure sortie",
+        "Statut",
+        "Shift",
+        "Retard",
+        "Observations",
+    ]
+    assert sheet["C6"].value == "Employé test"
+    assert sheet["D6"].value == "9H"
+
+
+def test_attendance_import_guide_email_requires_management_access():
+    user, store, _employee = create_store_setup()
+    StoreMembership.objects.filter(user=user, store=store).delete()
+    client = authenticated_client(user)
+
+    response = client.post("/api/pointage/send-import-guide-email/", {"store": store.pk}, format="json")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_attendance_import_guide_email_schedules_email():
+    user, store, _employee = create_store_setup()
+    client = authenticated_client(user)
+
+    with patch("account.tasks.send_attendance_import_guide_email.apply_async") as mocked_task:
+        response = client.post("/api/pointage/send-import-guide-email/", {"store": store.pk}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    mocked_task.assert_called_once_with((user.pk, user.email))
 
 
 def test_attendance_model_calculates_evening_shift_delay():

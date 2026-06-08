@@ -96,6 +96,11 @@ class PromotionLineInputSerializer(serializers.Serializer):
 class PromotionCreateSerializer(serializers.Serializer):
     store = serializers.IntegerField(required=False)
     store_id = serializers.IntegerField(required=False)
+    stores = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=False,
+    )
     name = serializers.CharField(max_length=160)
     selling_price = serializers.DecimalField(max_digits=12, decimal_places=2)
     status = serializers.ChoiceField(
