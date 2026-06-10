@@ -86,6 +86,11 @@ def test_expense_create_accepts_invoice_file():
     assert expense.invoice_file.name.endswith(".pdf")
     assert response.data["invoice_file_url"]
 
+    detail_response = client.get(f"/api/finance/{expense.pk}/")
+
+    assert detail_response.status_code == status.HTTP_200_OK
+    assert detail_response.data["invoice_file_url"] == response.data["invoice_file_url"]
+
 
 def test_expense_category_crud_is_available_to_authenticated_users():
     user, _store, _category = create_store_setup()
