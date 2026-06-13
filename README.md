@@ -1,32 +1,65 @@
 # Gestion Magasin Backend
 
-## Purpose
+Django REST API for a store operations platform for catalog, stock, store inventory, purchases, sales, cash register, promotions, expenses, attendance, reporting, users, notifications, and multi-store workflows.
 
-Gestion Magasin Backend is the Django API for store operations. It manages catalog data, stock, stores, sales, purchases, finance, attendance, reporting, notifications, and websocket events.
+This is a production-oriented business backend. It models real operational workflows, authenticated staff access, API filtering, document/report generation, realtime notification plumbing, and testable domain behavior.
+
+## What It Shows
+
+- Backend ownership for a complete internal business application.
+- Django REST API design across related business modules.
+- PostgreSQL data modeling for operational records and audit/history needs.
+- Auth, permissions, SSO subject handling, filters, dashboards, exports, and realtime events.
+- Testable backend code with pytest tooling instead of only manual checks.
+
+## Main Modules
+
+- account
+- attendance
+- catalog
+- finance
+- reporting
+- sales
+- stock
+- store
+- notification
+- ws
+
+## Key Capabilities
+
+- Django REST API for articles, stores, stock, inventory, stock transfers, purchases, sales, caisse, promotions, expenses, attendance, and reporting.
+- Multi-store operational model with store tabs, stock status, reporting endpoints, and user/permission flows.
+- JWT/session auth, SSO subject support, django-filter, django-axes, and production-ready CORS/static/runtime setup.
+- ReportLab/OpenPyXL support for reporting and export-oriented documents.
+- Realtime notifications and websocket runtime through Channels, Daphne, Redis, and Celery-ready dependencies.
+- pytest/pytest-django stack with async/cov/xdist support.
 
 ## Stack
 
-- Python and Django
-- Django REST Framework
-- Simple JWT and dj-rest-auth
-- django-filter
-- Channels, Daphne, Redis, and Celery
-- PostgreSQL
-- ReportLab and OpenPyXL
-- Pytest and pytest-django
+- Python, Django 6, Django REST Framework
+- PostgreSQL, django-filter, django-simple-history
+- SimpleJWT, dj-rest-auth, django-axes, CORS
+- Redis, Channels, channels-redis, Daphne, Celery-ready runtime
+- Gunicorn, WhiteNoise, Pillow/OpenCV where media handling is needed
+- pytest, pytest-django, pytest-cov, pytest-asyncio, pytest-xdist
 
-## Features
+## Related Repository
 
-- Product catalog and inventory APIs
-- Store stock, transfers, purchases, and sales
-- Point-of-sale and promotion data
-- Finance and attendance records
-- Reporting endpoints
-- Notifications and websocket updates
+- Frontend: [Altroo/gestion_magasin_frontend](https://github.com/Altroo/gestion_magasin_frontend)
 
-## Setup
+## Product Screenshots
 
-Provide local-only variables for Django runtime settings, database, Redis, media storage, and allowed origins. Use localhost values for local development and do not commit local configuration files.
+Redacted production UI screens powered by this API. Sensitive names, amounts, dates, and records are blurred.
+
+![Store operations dashboard](docs/screenshots/gestion-magasin-dashboard.png)
+
+![Cash register workflow](docs/screenshots/gestion-magasin-caisse.png)
+
+![Stock management](docs/screenshots/gestion-magasin-stock.png)
+
+## Local Setup
+
+Create local-only environment variables for Django settings, database, Redis, media/static storage, CORS, and allowed hosts. Do not commit `.env` files or production credentials.
 
 ```bash
 python -m venv .venv
@@ -36,18 +69,15 @@ python manage.py migrate
 python manage.py runserver 8006
 ```
 
+On Windows, activate with `.venv\Scripts\activate`.
+
 ## Tests
 
 ```bash
 python -m pytest
+python -m pytest --cov
 ```
 
-## Screenshots
+## Portfolio Note
 
-Sanitized product workspace:
-
-![Gestion Magasin product workspace](docs/screenshots/gestion-magasin-showcase.png)
-
-Authentication screen:
-
-![Gestion Magasin login](docs/screenshots/gestion-magasin-login.png)
+The repository is public for portfolio review. Screenshots are redacted, and sensitive production values are intentionally hidden.
