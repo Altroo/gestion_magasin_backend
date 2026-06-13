@@ -42,6 +42,12 @@ python manage.py runserver 8006
 python -m pytest
 ```
 
-## Screenshot
+## Screenshots
+
+Sanitized product workspace:
+
+![Gestion Magasin product workspace](docs/screenshots/gestion-magasin-showcase.png)
+
+Authentication screen:
 
 ![Gestion Magasin login](docs/screenshots/gestion-magasin-login.png)
