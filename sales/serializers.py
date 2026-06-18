@@ -109,7 +109,7 @@ class PromotionCreateSerializer(serializers.Serializer):
     )
     start_date = serializers.DateField(required=False, allow_null=True)
     end_date = serializers.DateField(required=False, allow_null=True)
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     lines = PromotionLineInputSerializer(many=True)
 
     def validate_selling_price(self, value):
@@ -254,7 +254,7 @@ class SaleCreateSerializer(serializers.Serializer):
     )
     idempotency_key = serializers.CharField(required=False, allow_blank=True)
     offline_created_at = serializers.DateTimeField(required=False, allow_null=True)
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     lines = SaleCreateLineSerializer(many=True, required=False)
     promotion_lines = SaleCreatePromotionLineSerializer(many=True, required=False)
 

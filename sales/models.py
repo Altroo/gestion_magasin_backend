@@ -309,7 +309,7 @@ class CustomerCreditLedger(models.Model):
         verbose_name=_("Vente"),
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name=_("Montant"))
-    note = models.CharField(max_length=255, blank=True, default="", verbose_name=_("Note"))
+    note = models.TextField(max_length=2000, blank=True, default="", verbose_name=_("Note"))
     created_by = models.ForeignKey(
         "accounts.CustomUser",
         on_delete=models.SET_NULL,

@@ -453,7 +453,7 @@ class InventoryLine(models.Model):
     expected_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     counted_quantity = models.DecimalField(max_digits=12, decimal_places=3)
     difference = models.DecimalField(max_digits=12, decimal_places=3, default=0)
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(max_length=2000, blank=True, default="")
     history = HistoricalRecords()
 
     class Meta:

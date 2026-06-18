@@ -107,7 +107,7 @@ class StockAdjustmentSerializer(serializers.Serializer):
     unit_cost = serializers.DecimalField(
         max_digits=12, decimal_places=2, required=False
     )
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     allow_negative = serializers.BooleanField(required=False, default=False)
 
 
@@ -251,7 +251,7 @@ class StockTransferCreateSerializer(serializers.Serializer):
         choices=StockTransfer.Statuses.choices,
         default=StockTransfer.Statuses.DRAFT,
     )
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     lines = StockTransferLineInputSerializer(many=True)
 
     def validate(self, attrs):
@@ -376,7 +376,7 @@ class PurchaseCreateSerializer(serializers.Serializer):
         choices=Purchase.Statuses.choices, default=Purchase.Statuses.DRAFT
     )
     invoice_file = serializers.FileField(required=False, allow_null=True)
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     lines = PurchaseLineInputSerializer(many=True)
 
     def validate_lines(self, value):
@@ -453,7 +453,7 @@ class InventoryLineInputSerializer(serializers.Serializer):
         max_digits=12, decimal_places=3, required=False
     )
     counted_quantity = serializers.DecimalField(max_digits=12, decimal_places=3)
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
 
     def validate_counted_quantity(self, value):
         if value < 0:
@@ -471,7 +471,7 @@ class InventorySessionCreateSerializer(serializers.Serializer):
         choices=InventorySession.Statuses.choices,
         default=InventorySession.Statuses.DRAFT,
     )
-    note = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     lines = InventoryLineInputSerializer(many=True)
 
     def validate_lines(self, value):
