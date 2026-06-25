@@ -107,7 +107,7 @@ class Command(BaseCommand):
     def _users(self, roles, stores):
         User = get_user_model()
         admin, _ = User.objects.update_or_create(
-            email="service-it@casadilusso.ma",
+            email="info@elbouazzatiholding.ma",
             defaults={
                 "first_name": "Service",
                 "last_name": "IT",
