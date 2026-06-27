@@ -55,6 +55,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
             raise ValidationError({"customer": ["Client introuvable pour ce magasin."]})
 
     payment_mode = _payment_mode(validated_data)
+    sale_type = validated_data.get("sale_type") or Sale.Types.NORMAL
     lines_payload = validated_data.get("lines") or []
     promotion_lines_payload = validated_data.get("promotion_lines") or []
     prepared_lines = []
@@ -63,7 +64,12 @@ def create_sale(*, store, user, validated_data) -> Sale:
     for item in lines_payload:
         product = resolve_product(item["product"])
         quantity = _decimal(item["quantity"])
-        unit_price = _decimal(item.get("unit_price") or product.counter_price)
+        default_unit_price = (
+            product.wholesale_price
+            if sale_type == Sale.Types.WHOLESALE
+            else product.counter_price
+        )
+        unit_price = _decimal(item.get("unit_price") or default_unit_price)
         line_total = quantity * unit_price
         subtotal += line_total
         prepared_lines.append(
@@ -106,6 +112,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
         customer=customer,
         payment_mode=payment_mode,
         payment_status=payment_status,
+        sale_type=sale_type,
         subtotal=subtotal,
         discount_amount=discount_amount,
         total=total,

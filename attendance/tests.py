@@ -240,7 +240,7 @@ def test_attendance_import_guide_email_schedules_email():
     mocked_task.assert_called_once_with((user.pk, user.email))
 
 
-def test_attendance_model_calculates_evening_shift_delay():
+def test_attendance_model_calculates_afternoon_shift_delay():
     user, store, employee = create_store_setup()
 
     record = AttendanceRecord.objects.create(
@@ -249,10 +249,28 @@ def test_attendance_model_calculates_evening_shift_delay():
         date=date(2026, 6, 9),
         clock_in=time(15, 12),
         clock_out=time(23, 0),
-        shift=AttendanceRecord.Shifts.EVENING,
+        shift=AttendanceRecord.Shifts.AFTERNOON,
         status=AttendanceRecord.Statuses.PRESENT,
         created_by=user,
     )
 
     assert record.hours_worked == Decimal("7.80")
+    assert record.delay_minutes == 12
+
+
+def test_attendance_model_calculates_evening_shift_delay():
+    user, store, employee = create_store_setup()
+
+    record = AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 9),
+        clock_in=time(19, 12),
+        clock_out=time(23, 0),
+        shift=AttendanceRecord.Shifts.EVENING,
+        status=AttendanceRecord.Statuses.PRESENT,
+        created_by=user,
+    )
+
+    assert record.hours_worked == Decimal("3.80")
     assert record.delay_minutes == 12

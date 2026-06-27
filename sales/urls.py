@@ -11,6 +11,7 @@ from sales.views import (
     PromotionListCreateView,
     SaleDashboardView,
     SaleDetailEditDeleteView,
+    SaleFacturePdfView,
     SaleListCreateView,
     SaleSyncOfflineView,
     SaleVoidView,
@@ -30,6 +31,7 @@ urlpatterns = [
     path("sync-offline/", SaleSyncOfflineView.as_view(), name="sales-sync-offline"),
     path("dashboard/", SaleDashboardView.as_view(), name="sales-dashboard"),
     path("<int:pk>/void/", SaleVoidView.as_view(), name="sales-void"),
+    path("<int:pk>/facture/", SaleFacturePdfView.as_view(), name="sales-facture"),
     path("<int:pk>/", SaleDetailEditDeleteView.as_view(), name="sales-detail"),
     path("", SaleListCreateView.as_view(), name="sales-list-create"),
 ]

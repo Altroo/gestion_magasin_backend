@@ -55,6 +55,7 @@ class CustomUserAdmin(UserAdmin):
                     "can_edit",
                     "can_delete",
                     "can_create_promotion",
+                    "can_wholesale_sale",
                 )
             },
         ),

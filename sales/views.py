@@ -26,6 +26,7 @@ from sales.serializers import (
     SaleVoidSerializer,
 )
 from sales.services import create_sale, void_sale
+from sales.pdf import build_sale_facture_pdf
 from stock.models import StockBalance
 from store.models import Store
 from store.permissions import (
@@ -72,6 +73,14 @@ def _ensure_promotion_create_permission(user):
     if user.is_staff or getattr(user, "can_create_promotion", False):
         return
     raise PermissionDenied("Vous n'avez pas les droits pour créer une promotion.")
+
+
+def _ensure_wholesale_sale_permission(user, sale_type):
+    if sale_type != Sale.Types.WHOLESALE:
+        return
+    if user.is_staff or getattr(user, "can_wholesale_sale", False):
+        return
+    raise PermissionDenied("Vous n'avez pas les droits pour faire une vente en gros.")
 
 
 class CustomerListCreateView(APIView):
@@ -578,6 +587,10 @@ class SaleListCreateView(APIView):
         store = get_store_from_request(request, roles=WRITE_ROLES)
         serializer = SaleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        _ensure_wholesale_sale_permission(
+            request.user,
+            serializer.validated_data.get("sale_type"),
+        )
         sale = create_sale(
             store=store, user=request.user, validated_data=serializer.validated_data
         )
@@ -636,6 +649,10 @@ class SaleSyncOfflineView(APIView):
                 errors.append({"index": index, "errors": serializer.errors})
                 continue
             try:
+                _ensure_wholesale_sale_permission(
+                    request.user,
+                    serializer.validated_data.get("sale_type"),
+                )
                 sale = create_sale(
                     store=store,
                     user=request.user,
@@ -664,6 +681,19 @@ class SaleVoidView(APIView):
             reason=serializer.validated_data.get("reason", ""),
         )
         return Response(SaleSerializer(sale).data, status=status.HTTP_200_OK)
+
+
+class SaleFacturePdfView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, pk, *args, **kwargs):
+        sale = _get_sale_for_user(request, pk)
+        if sale.sale_type != Sale.Types.WHOLESALE:
+            raise ValidationError({"sale_type": ["Seules les ventes en gros ont une facture."]})
+        if not request.user.is_staff and not getattr(request.user, "can_print", False):
+            raise PermissionDenied("Vous n'avez pas les droits pour imprimer.")
+        return build_sale_facture_pdf(sale)
 
 
 class SaleDashboardView(APIView):

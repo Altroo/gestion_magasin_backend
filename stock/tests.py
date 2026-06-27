@@ -320,6 +320,49 @@ def test_responsable_requests_stock_addition_and_direction_approves_it(django_ca
     ).exists()
 
 
+def test_direction_bulk_approves_stock_add_requests():
+    user, store, category = create_store_setup(is_global_stock=False)
+    direction = User.objects.create_user(
+        email="stock-direction-bulk@example.com", password="securepass123"
+    )
+    direction_role, _ = Role.objects.get_or_create(
+        code=Role.Codes.DIRECTION,
+        defaults={"name": "Direction", "rank": 10},
+    )
+    StoreMembership.objects.create(user=direction, store=store, role=direction_role)
+    balance = create_balance(
+        store, category, "STK-REQ-BULK", "Article demande bulk", "5.000", "2.000"
+    )
+    requests = [
+        StockAddRequest.objects.create(
+            store=store,
+            product=balance.product,
+            requested_by=user,
+            quantity=Decimal("4.000"),
+            unit_cost=Decimal("8.50"),
+        ),
+        StockAddRequest.objects.create(
+            store=store,
+            product=balance.product,
+            requested_by=user,
+            quantity=Decimal("6.000"),
+            unit_cost=Decimal("8.50"),
+        ),
+    ]
+
+    response = authenticated_client(direction).post(
+        "/api/stock/add-requests/bulk-approve/",
+        {"ids": [stock_request.pk for stock_request in requests]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.data
+    assert response.data["approved"] == 2
+    balance.refresh_from_db()
+    assert balance.quantity == Decimal("15.000")
+    assert StockAddRequest.objects.filter(status=StockAddRequest.Statuses.APPROVED).count() == 2
+
+
 def test_stock_add_request_respects_direction_notification_preference(django_capture_on_commit_callbacks):
     user, store, category = create_store_setup(is_global_stock=False)
     direction = User.objects.create_user(

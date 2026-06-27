@@ -50,12 +50,14 @@ class AttendanceRecord(models.Model):
 
     class Shifts(models.TextChoices):
         MORNING = "morning", _("Matin")
-        EVENING = "evening", _("Soir")
-        OFF = "off", _("Repos")
+        AFTERNOON = "afternoon", _("Apres midi")
+        EVENING = "evening", _("soir")
+        OFF = "off", _("repos")
 
     SHIFT_START_TIMES = {
         Shifts.MORNING: time(9, 0),
-        Shifts.EVENING: time(15, 0),
+        Shifts.AFTERNOON: time(15, 0),
+        Shifts.EVENING: time(19, 0),
     }
 
     store = models.ForeignKey(

@@ -185,6 +185,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "payment_mode_name",
             "status",
             "payment_status",
+            "sale_type",
             "subtotal",
             "discount_amount",
             "total",
@@ -245,6 +246,10 @@ class SaleCreateSerializer(serializers.Serializer):
     payment_status = serializers.ChoiceField(
         choices=Sale.PaymentStatuses.choices,
         default=Sale.PaymentStatuses.PAID,
+    )
+    sale_type = serializers.ChoiceField(
+        choices=Sale.Types.choices,
+        default=Sale.Types.NORMAL,
     )
     discount_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0")

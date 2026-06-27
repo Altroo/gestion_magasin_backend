@@ -343,24 +343,53 @@ class StockAddRequestApproveView(APIView):
     def post(request, pk, *args, **kwargs):
         stock_request = _get_stock_add_request_for_user(request, pk)
         _ensure_stock_approval_access(request.user, stock_request.store_id)
-        if stock_request.status != StockAddRequest.Statuses.PENDING:
-            raise ValidationError({"status": ["Cette demande est déjà traitée."]})
-        apply_stock_movement(
-            store=stock_request.store,
-            product=stock_request.product,
-            quantity=stock_request.quantity,
-            movement_type=StockMovement.Types.PURCHASE,
-            user=request.user,
-            unit_cost=stock_request.unit_cost,
-            source_type="stock_add_request",
-            source_id=stock_request.pk,
-            note=stock_request.note,
-        )
-        stock_request.status = StockAddRequest.Statuses.APPROVED
-        stock_request.reviewed_by = request.user
-        stock_request.reviewed_at = timezone.now()
-        stock_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "date_updated"])
+        _approve_stock_add_request(stock_request, request.user)
         return Response(StockAddRequestSerializer(stock_request).data, status=status.HTTP_200_OK)
+
+
+def _approve_stock_add_request(stock_request, user):
+    if stock_request.status != StockAddRequest.Statuses.PENDING:
+        raise ValidationError({"status": ["Cette demande est déjà traitée."]})
+    apply_stock_movement(
+        store=stock_request.store,
+        product=stock_request.product,
+        quantity=stock_request.quantity,
+        movement_type=StockMovement.Types.PURCHASE,
+        user=user,
+        unit_cost=stock_request.unit_cost,
+        source_type="stock_add_request",
+        source_id=stock_request.pk,
+        note=stock_request.note,
+    )
+    stock_request.status = StockAddRequest.Statuses.APPROVED
+    stock_request.reviewed_by = user
+    stock_request.reviewed_at = timezone.now()
+    stock_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "date_updated"])
+    return stock_request
+
+
+class StockAddRequestBulkApproveView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    @transaction.atomic
+    def post(request, *args, **kwargs):
+        ids = request.data.get("ids")
+        if not ids or not isinstance(ids, list):
+            raise ValidationError({"ids": "Une liste d'identifiants est requise."})
+        try:
+            request_ids = [int(item) for item in ids]
+        except (TypeError, ValueError):
+            raise ValidationError({"ids": "Les identifiants doivent être des entiers."})
+
+        stock_requests = list(_stock_add_request_queryset(request).filter(pk__in=request_ids))
+        if len(stock_requests) != len(set(request_ids)):
+            raise ValidationError({"ids": "Certaines demandes sont introuvables."})
+        for stock_request in stock_requests:
+            _ensure_stock_approval_access(request.user, stock_request.store_id)
+        for stock_request in stock_requests:
+            _approve_stock_add_request(stock_request, request.user)
+        return Response({"approved": len(stock_requests)}, status=status.HTTP_200_OK)
 
 
 class StockAddRequestRejectView(APIView):

@@ -101,6 +101,59 @@ def test_confirm_sale_reduces_stock_and_creates_audit_rows():
     ).exists()
 
 
+def test_wholesale_sale_requires_user_permission():
+    user = create_user("wholesale-denied@example.com")
+    store, product = create_store_setup(user)
+    client = authenticated_client(user)
+
+    response = client.post(
+        "/api/sales/",
+        {
+            "store": store.pk,
+            "payment_mode_code": "cash",
+            "sale_type": Sale.Types.WHOLESALE,
+            "lines": [{"product": product.pk, "quantity": "1"}],
+            "idempotency_key": "sale-wholesale-denied",
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_wholesale_sale_uses_wholesale_price_and_prints_facture_pdf():
+    user = create_user("wholesale-allowed@example.com")
+    user.can_wholesale_sale = True
+    user.can_print = True
+    user.save(update_fields=["can_wholesale_sale", "can_print"])
+    store, product = create_store_setup(user)
+    product.wholesale_price = Decimal("17.00")
+    product.save(update_fields=["wholesale_price"])
+    client = authenticated_client(user)
+
+    response = client.post(
+        "/api/sales/",
+        {
+            "store": store.pk,
+            "payment_mode_code": "cash",
+            "sale_type": Sale.Types.WHOLESALE,
+            "lines": [{"product": product.pk, "quantity": "1"}],
+            "idempotency_key": "sale-wholesale-allowed",
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    sale = Sale.objects.get(id=response.data["id"])
+    assert sale.sale_type == Sale.Types.WHOLESALE
+    assert sale.total == Decimal("17.00")
+
+    pdf_response = client.get(f"/api/sales/{sale.pk}/facture/")
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response["Content-Type"] == "application/pdf"
+    assert pdf_response.content.startswith(b"%PDF")
+
+
 def test_confirm_promotion_sale_reduces_component_stock():
     user = create_user("promo-seller@example.com")
     store, product = create_store_setup(user)

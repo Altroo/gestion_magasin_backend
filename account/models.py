@@ -135,6 +135,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         _("Peut créer une promotion"),
         default=False,
     )
+    can_wholesale_sale = models.BooleanField(_("Vente en gros"), default=False)
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 

@@ -131,6 +131,10 @@ class PromotionLine(models.Model):
 
 
 class Sale(models.Model):
+    class Types(models.TextChoices):
+        NORMAL = "normal", _("Normale")
+        WHOLESALE = "wholesale", _("Vente en gros")
+
     class Statuses(models.TextChoices):
         CONFIRMED = "confirmed", _("Confirmée")
         VOID = "void", _("Annulée")
@@ -182,6 +186,13 @@ class Sale(models.Model):
         choices=PaymentStatuses.choices,
         default=PaymentStatuses.PAID,
         verbose_name=_("Statut paiement"),
+    )
+    sale_type = models.CharField(
+        max_length=20,
+        choices=Types.choices,
+        default=Types.NORMAL,
+        db_index=True,
+        verbose_name=_("Type vente"),
     )
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
