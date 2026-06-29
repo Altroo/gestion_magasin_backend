@@ -66,7 +66,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py runserver 8006
+python manage.py runserver 8005
 ```
 
 On Windows, activate with `.venv\Scripts\activate`.
