@@ -121,11 +121,15 @@ class TokenRefreshView(APIView):
         from rest_framework_simplejwt.settings import (
             api_settings as jwt_settings,
         )
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
         serializer = CookieTokenRefreshSerializer(
             data=request.data, context={"request": request}
         )
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as exc:
+            raise InvalidToken(str(exc)) from exc
 
         access = serializer.validated_data["access"]
         refresh = serializer.validated_data.get("refresh", "")

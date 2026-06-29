@@ -367,6 +367,11 @@ class TestAccountAPIExtras:
         assert resp.status_code == 200
         assert "access" in resp.data
 
+    def test_token_refresh_invalid(self):
+        url = reverse("account:token_refresh")
+        resp = self.client.post(url, {"refresh": "invalid"})
+        assert resp.status_code == 401
+
     def test_password_change_mismatch(self):
         url = reverse("account:password_change")
         resp = self.auth_client.put(
