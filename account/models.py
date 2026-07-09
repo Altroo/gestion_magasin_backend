@@ -136,6 +136,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         default=False,
     )
     can_wholesale_sale = models.BooleanField(_("Vente en gros"), default=False)
+    pointage_only = models.BooleanField(_("Pointage uniquement"), default=False)
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 

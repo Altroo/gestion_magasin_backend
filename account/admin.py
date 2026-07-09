@@ -19,11 +19,12 @@ class CustomUserAdmin(UserAdmin):
         "first_name",
         "last_name",
         "is_staff",
+        "pointage_only",
         "is_active",
         "date_joined",
         "date_updated",
     )
-    list_filter = ("is_staff", "is_active")
+    list_filter = ("is_staff", "pointage_only", "is_active")
     date_hierarchy = "date_joined"
     fieldsets = (
         (
@@ -56,6 +57,7 @@ class CustomUserAdmin(UserAdmin):
                     "can_delete",
                     "can_create_promotion",
                     "can_wholesale_sale",
+                    "pointage_only",
                 )
             },
         ),

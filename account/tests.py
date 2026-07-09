@@ -1277,6 +1277,36 @@ class TestCreateAccountSerializerExtra:
         assert user.is_staff is False
         assert user.can_create_promotion is False
 
+    def test_create_pointage_only_normalizes_permissions(self):
+        ser = CreateAccountSerializer(
+            data={
+                "email": "pointage_only@example.com",
+                "password": "testpass123",
+                "first_name": "Pointage",
+                "last_name": "Only",
+                "is_staff": True,
+                "pointage_only": True,
+                "can_view": False,
+                "can_print": True,
+                "can_create": False,
+                "can_edit": False,
+                "can_delete": True,
+                "can_create_promotion": True,
+                "can_wholesale_sale": True,
+            }
+        )
+        assert ser.is_valid(), ser.errors
+        user = ser.save()
+        assert user.pointage_only is True
+        assert user.is_staff is False
+        assert user.can_view is True
+        assert user.can_create is True
+        assert user.can_edit is True
+        assert user.can_print is False
+        assert user.can_delete is False
+        assert user.can_create_promotion is False
+        assert user.can_wholesale_sale is False
+
 
 @pytest.mark.django_db
 class TestProfilePutSerializerExtra:
@@ -2081,6 +2111,34 @@ class TestUserPatchSerializer:
         assert updated.is_staff is False
         assert updated.can_create_promotion is False
 
+    def test_update_pointage_only_normalizes_permissions(self):
+        serializer = UserPatchSerializer(
+            instance=self.user,
+            data={
+                "pointage_only": True,
+                "is_staff": True,
+                "can_view": False,
+                "can_print": True,
+                "can_create": False,
+                "can_edit": False,
+                "can_delete": True,
+                "can_create_promotion": True,
+                "can_wholesale_sale": True,
+            },
+            partial=True,
+        )
+        assert serializer.is_valid(), serializer.errors
+        updated = serializer.save()
+        assert updated.pointage_only is True
+        assert updated.is_staff is False
+        assert updated.can_view is True
+        assert updated.can_create is True
+        assert updated.can_edit is True
+        assert updated.can_print is False
+        assert updated.can_delete is False
+        assert updated.can_create_promotion is False
+        assert updated.can_wholesale_sale is False
+
     def test_read_only_email_ignored(self):
         """Email is read-only; attempting to change it is silently ignored."""
         serializer = UserPatchSerializer(
@@ -2161,6 +2219,30 @@ class TestUserPatchSerializer:
         assert serializer.is_valid(), serializer.errors
         updated = serializer.save()
         assert updated.pk == self.user.pk
+
+
+@pytest.mark.django_db
+class TestPointageOnlyAccessMiddleware:
+    def setup_method(self):
+        self.user = CustomUser.objects.create_user(
+            email="pointage_access@example.com",
+            password="pass",
+            pointage_only=True,
+        )
+        token = str(AccessToken.for_user(self.user))
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_allows_pointage_only_support_api(self):
+        response = self.client.get("/api/stores/mine/")
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_blocks_non_pointage_api(self):
+        response = self.client.get("/api/stores/")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.json()["details"]["error"] == (
+            "Ce compte est limité au pointage uniquement."
+        )
 
 
 @pytest.mark.django_db

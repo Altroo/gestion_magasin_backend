@@ -70,6 +70,26 @@ def _sync_store_memberships(user, stores_data):
     user.store_memberships.exclude(store_id__in=submitted_store_ids).delete()
 
 
+def _normalize_pointage_only_permissions(validated_data):
+    if not validated_data.get("pointage_only"):
+        if not validated_data.get("is_staff"):
+            validated_data["can_create_promotion"] = False
+        return
+
+    validated_data.update(
+        {
+            "is_staff": False,
+            "can_view": True,
+            "can_print": False,
+            "can_create": True,
+            "can_edit": True,
+            "can_delete": False,
+            "can_create_promotion": False,
+            "can_wholesale_sale": False,
+        }
+    )
+
+
 class CreateAccountSerializer(serializers.ModelSerializer):
     avatar = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     avatar_cropped = serializers.CharField(
@@ -162,8 +182,7 @@ class CreateAccountSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         stores_data = validated_data.pop("stores", None)
-        if not validated_data.get("is_staff"):
-            validated_data["can_create_promotion"] = False
+        _normalize_pointage_only_permissions(validated_data)
         avatar = self._process_image_field("avatar", validated_data)
         avatar_cropped = self._process_image_field("avatar_cropped", validated_data)
         validated_data.pop("avatar", None)
@@ -202,6 +221,7 @@ class CreateAccountSerializer(serializers.ModelSerializer):
             "can_delete",
             "can_create_promotion",
             "can_wholesale_sale",
+            "pointage_only",
             "stores",
         ]
         extra_kwargs = {
@@ -302,6 +322,7 @@ class ProfileGETSerializer(serializers.ModelSerializer):
             "can_delete",
             "can_create_promotion",
             "can_wholesale_sale",
+            "pointage_only",
         ]
 
 
@@ -522,6 +543,7 @@ class UsersListSerializer(serializers.ModelSerializer):
             "can_delete",
             "can_create_promotion",
             "can_wholesale_sale",
+            "pointage_only",
             "stores",
         ]
         read_only_fields = ("date_joined", "date_updated", "last_login")
@@ -565,6 +587,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             "can_delete",
             "can_create_promotion",
             "can_wholesale_sale",
+            "pointage_only",
             "stores",
         ]
         read_only_fields = ("id", "date_joined", "date_updated", "last_login")
@@ -591,15 +614,29 @@ class UserPatchSerializer(ProfilePutSerializer):
             "can_delete",
             "can_create_promotion",
             "can_wholesale_sale",
+            "pointage_only",
             "stores",
         ]
         read_only_fields = ("id", "email", "date_joined", "last_login")
 
     def update(self, instance, validated_data):
         stores_data = validated_data.pop("stores", None)
-        next_is_staff = validated_data.get("is_staff", instance.is_staff)
-        if not next_is_staff:
-            validated_data["can_create_promotion"] = False
+        current_values = {
+            "pointage_only": instance.pointage_only,
+            "is_staff": instance.is_staff,
+            "can_view": instance.can_view,
+            "can_print": instance.can_print,
+            "can_create": instance.can_create,
+            "can_edit": instance.can_edit,
+            "can_delete": instance.can_delete,
+            "can_create_promotion": instance.can_create_promotion,
+            "can_wholesale_sale": instance.can_wholesale_sale,
+        }
+        current_values.update(validated_data)
+        _normalize_pointage_only_permissions(current_values)
+        for field in current_values:
+            if field in validated_data or field in {"is_staff", "can_create_promotion"} or current_values["pointage_only"]:
+                validated_data[field] = current_values[field]
         instance = super().update(instance, validated_data)
         _sync_store_memberships(instance, stores_data)
         return instance
