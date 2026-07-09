@@ -83,7 +83,7 @@ def _normalize_pointage_only_permissions(validated_data):
             "can_print": False,
             "can_create": True,
             "can_edit": True,
-            "can_delete": False,
+            "can_delete": True,
             "can_create_promotion": False,
             "can_wholesale_sale": False,
         }

@@ -1303,7 +1303,7 @@ class TestCreateAccountSerializerExtra:
         assert user.can_create is True
         assert user.can_edit is True
         assert user.can_print is False
-        assert user.can_delete is False
+        assert user.can_delete is True
         assert user.can_create_promotion is False
         assert user.can_wholesale_sale is False
 
@@ -2135,7 +2135,7 @@ class TestUserPatchSerializer:
         assert updated.can_create is True
         assert updated.can_edit is True
         assert updated.can_print is False
-        assert updated.can_delete is False
+        assert updated.can_delete is True
         assert updated.can_create_promotion is False
         assert updated.can_wholesale_sale is False
 
