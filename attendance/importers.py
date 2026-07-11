@@ -3,7 +3,12 @@ from typing import BinaryIO
 
 from django.db import transaction
 
-from attendance.models import AttendanceImportBatch, AttendanceRecord, Employee
+from attendance.models import (
+    DEFAULT_ATTENDANCE_RESPONSIBLE,
+    AttendanceImportBatch,
+    AttendanceRecord,
+    Employee,
+)
 
 
 def _clean(value) -> str:
@@ -75,7 +80,11 @@ def import_attendance_from_workbook(
 
     workbook = load_workbook(file_obj, data_only=True)
     sheet = workbook["Pointage"] if "Pointage" in workbook.sheetnames else workbook.active
-    responsible = _clean(sheet["B3"].value) or _clean(sheet["C3"].value)
+    responsible = (
+        _clean(sheet["B3"].value)
+        or _clean(sheet["C3"].value)
+        or DEFAULT_ATTENDANCE_RESPONSIBLE
+    )
     week_start = _date_or_none(sheet["E3"].value)
     week_end = _date_or_none(sheet["G3"].value)
     header_row_number = _find_header_row(sheet)

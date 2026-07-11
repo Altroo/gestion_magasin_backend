@@ -6,6 +6,9 @@ from django.utils.translation import gettext_lazy as _
 from simple_history.models import HistoricalRecords
 
 
+DEFAULT_ATTENDANCE_RESPONSIBLE = "Mehdi Zorgane"
+
+
 class Employee(models.Model):
     store = models.ForeignKey(
         "store.Store",
@@ -93,7 +96,12 @@ class AttendanceRecord(models.Model):
         default=Statuses.PRESENT,
         verbose_name=_("Statut"),
     )
-    responsible = models.CharField(max_length=160, blank=True, default="", verbose_name=_("Responsable"))
+    responsible = models.CharField(
+        max_length=160,
+        blank=True,
+        default=DEFAULT_ATTENDANCE_RESPONSIBLE,
+        verbose_name=_("Responsable"),
+    )
     observations = models.TextField(blank=True, default="", verbose_name=_("Observations"))
     created_by = models.ForeignKey(
         "accounts.CustomUser",
@@ -165,7 +173,12 @@ class AttendanceImportBatch(models.Model):
         verbose_name=_("Magasin"),
     )
     file_name = models.CharField(max_length=255, verbose_name=_("Fichier"))
-    responsible = models.CharField(max_length=160, blank=True, default="", verbose_name=_("Responsable"))
+    responsible = models.CharField(
+        max_length=160,
+        blank=True,
+        default=DEFAULT_ATTENDANCE_RESPONSIBLE,
+        verbose_name=_("Responsable"),
+    )
     week_start = models.DateField(null=True, blank=True)
     week_end = models.DateField(null=True, blank=True)
     imported_by = models.ForeignKey(

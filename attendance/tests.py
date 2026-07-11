@@ -5,11 +5,17 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from attendance.models import AttendanceRecord, Employee
+from attendance.models import (
+    DEFAULT_ATTENDANCE_RESPONSIBLE,
+    AttendanceImportBatch,
+    AttendanceRecord,
+    Employee,
+)
+from attendance.importers import import_attendance_from_workbook
 from store.models import Role, Store, StoreMembership
 
 pytestmark = pytest.mark.django_db
@@ -282,6 +288,54 @@ def test_attendance_model_calculates_afternoon_shift_delay():
 
     assert record.hours_worked == Decimal("7.80")
     assert record.delay_minutes == 12
+
+
+def test_attendance_models_default_to_mehdi_zorgane():
+    user, store, employee = create_store_setup()
+
+    record = AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 13),
+        created_by=user,
+    )
+    batch = AttendanceImportBatch.objects.create(
+        store=store,
+        file_name="pointage.xlsx",
+        imported_by=user,
+    )
+
+    assert record.responsible == DEFAULT_ATTENDANCE_RESPONSIBLE
+    assert batch.responsible == DEFAULT_ATTENDANCE_RESPONSIBLE
+
+
+def test_attendance_import_defaults_responsible_to_mehdi_zorgane():
+    user, store, _employee = create_store_setup()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Pointage"
+    sheet["A5"] = "Date"
+    sheet["B5"] = "Nom salarié"
+    sheet["A6"] = date(2026, 6, 14)
+    sheet["B6"] = "EMPLOYÉ IMPORTÉ"
+    file_obj = BytesIO()
+    workbook.save(file_obj)
+    file_obj.seek(0)
+
+    batch = import_attendance_from_workbook(
+        file_obj,
+        store=store,
+        imported_by=user,
+        file_name="pointage.xlsx",
+    )
+
+    record = AttendanceRecord.objects.get(
+        store=store,
+        employee__full_name="EMPLOYÉ IMPORTÉ",
+        date=date(2026, 6, 14),
+    )
+    assert batch.responsible == DEFAULT_ATTENDANCE_RESPONSIBLE
+    assert record.responsible == DEFAULT_ATTENDANCE_RESPONSIBLE
 
 
 def test_attendance_model_calculates_evening_shift_delay():
