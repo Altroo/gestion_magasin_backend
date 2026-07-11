@@ -182,7 +182,7 @@ class MyStoresView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        if request.user.is_staff:
+        if request.user.is_staff or request.user.pointage_only:
             direction_role = Role.objects.get(code=Role.Codes.DIRECTION)
             stores = Store.objects.filter(is_active=True).order_by("name")
             return Response(

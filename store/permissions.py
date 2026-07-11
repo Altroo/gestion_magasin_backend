@@ -24,7 +24,7 @@ def _role_values(roles: Iterable[str] | None) -> set[str] | None:
 def user_store_ids(user, roles: Iterable[str] | None = None) -> list[int]:
     if not user or not user.is_authenticated:
         return []
-    if user.is_staff and roles is None:
+    if (user.is_staff and roles is None) or getattr(user, "pointage_only", False):
         return list(Store.objects.filter(is_active=True).values_list("id", flat=True))
 
     qs = StoreMembership.objects.filter(user=user, is_active=True, store__is_active=True)
@@ -37,7 +37,7 @@ def user_store_ids(user, roles: Iterable[str] | None = None) -> list[int]:
 def user_has_store_access(user, store_id: int, roles: Iterable[str] | None = None) -> bool:
     if not user or not user.is_authenticated:
         return False
-    if user.is_staff:
+    if user.is_staff or getattr(user, "pointage_only", False):
         return Store.objects.filter(pk=store_id, is_active=True).exists()
     role_values = _role_values(roles)
     qs = StoreMembership.objects.filter(

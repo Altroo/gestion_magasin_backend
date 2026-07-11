@@ -2237,6 +2237,20 @@ class TestPointageOnlyAccessMiddleware:
         response = self.client.get("/api/stores/mine/")
         assert response.status_code == status.HTTP_200_OK
 
+    def test_allows_pointage_only_profile_update(self):
+        response = self.client.patch(
+            "/api/account/profil/",
+            {
+                "first_name": "Pointage",
+                "last_name": "User",
+                "gender": "Homme",
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        self.user.refresh_from_db()
+        assert self.user.first_name == "Pointage"
+
     def test_blocks_non_pointage_api(self):
         response = self.client.get("/api/stores/")
         assert response.status_code == status.HTTP_403_FORBIDDEN

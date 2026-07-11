@@ -31,6 +31,36 @@ def make_user(email, is_staff=False):
 
 
 class TestStoreAPI:
+    def test_pointage_only_user_sees_active_stores_without_memberships(self):
+        user = User.objects.create_user(
+            email="pointage-stores@example.com",
+            password="securepass123",
+            pointage_only=True,
+        )
+        Role.objects.get_or_create(
+            code=Role.Codes.DIRECTION,
+            defaults={"name": "Direction", "rank": 1},
+        )
+        active_store = Store.objects.create(
+            name="POINTAGE ACTIVE",
+            code="POINTAGE_ACTIVE",
+            is_active=True,
+        )
+        Store.objects.create(
+            name="POINTAGE INACTIVE",
+            code="POINTAGE_INACTIVE",
+            is_active=False,
+        )
+        client = authenticated_client(user)
+
+        response = client.get(reverse("stores-mine"))
+
+        assert response.status_code == status.HTTP_200_OK
+        stores_by_id = {item["store"]["id"]: item for item in response.data}
+        assert active_store.pk in stores_by_id
+        assert stores_by_id[active_store.pk]["role"]["code"] == Role.Codes.DIRECTION
+        assert not StoreMembership.objects.filter(user=user).exists()
+
     def test_staff_can_create_store(self):
         user = make_user("store-admin@example.com", is_staff=True)
         client = authenticated_client(user)

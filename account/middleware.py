@@ -9,6 +9,7 @@ class PointageOnlyAccessMiddleware:
     )
     allowed_exact = {
         ("GET", "/api/account/profil/"),
+        ("PATCH", "/api/account/profil/"),
         ("PUT", "/api/account/password_change/"),
         ("POST", "/api/account/logout/"),
         ("POST", "/api/account/token_refresh/"),

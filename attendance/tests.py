@@ -174,6 +174,32 @@ def test_attendance_bulk_delete_removes_selected_records():
     assert not AttendanceRecord.objects.filter(pk__in=[first.pk, second.pk]).exists()
 
 
+def test_pointage_only_user_can_list_and_delete_without_store_membership():
+    store = Store.objects.create(code="pointage-only-store", name="POINTAGE ONLY STORE", is_active=True)
+    employee = Employee.objects.create(store=store, full_name="Employé pointage")
+    record = AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 12),
+        hours_worked=Decimal("8.00"),
+        status=AttendanceRecord.Statuses.PRESENT,
+    )
+    user = User.objects.create_user(
+        email="pointage-only-attendance@example.com",
+        password="securepass123",
+        pointage_only=True,
+    )
+    client = authenticated_client(user)
+
+    list_response = client.get("/api/pointage/", {"store": store.pk})
+    delete_response = client.delete(f"/api/pointage/{record.pk}/")
+
+    assert list_response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in list_response.data["results"]] == [record.pk]
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert not AttendanceRecord.objects.filter(pk=record.pk).exists()
+
+
 def test_attendance_export_workbook_matches_import_layout():
     user, store, employee = create_store_setup()
     AttendanceRecord.objects.create(
