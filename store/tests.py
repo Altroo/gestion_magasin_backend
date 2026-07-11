@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from attendance.models import COMMERCIAL_ADVISOR_POSITION, Employee
 from catalog.models import Category, Product
 from stock.models import StockBalance
 from store.models import Role, Store, StoreMembership
@@ -104,6 +105,76 @@ class TestStoreAPI:
         membership = StoreMembership.objects.get(user=member, store=store)
         assert membership.role == role
         assert response.data["managed_by"][0]["pk"] == member.pk
+
+    def test_staff_can_create_store_employees_without_app_accounts(self):
+        user = make_user("store-employee-admin@example.com", is_staff=True)
+        client = authenticated_client(user)
+        user_count = User.objects.count()
+
+        response = client.post(
+            reverse("stores-list"),
+            {
+                "name": "STORE EMPLOYEES",
+                "code": "STORE_EMPLOYEES",
+                "employees": [
+                    {"first_name": "Sara", "last_name": "Amrani"},
+                    {"first_name": "Youssef", "last_name": "Alaoui"},
+                ],
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        store = Store.objects.get(code="STORE_EMPLOYEES")
+        employees = Employee.objects.filter(store=store).order_by("first_name")
+        assert list(employees.values_list("first_name", "last_name")) == [
+            ("Sara", "Amrani"),
+            ("Youssef", "Alaoui"),
+        ]
+        assert all(employee.user_id is None for employee in employees)
+        assert all(employee.position == COMMERCIAL_ADVISOR_POSITION for employee in employees)
+        assert User.objects.count() == user_count
+        assert [item["full_name"] for item in response.data["employees"]] == [
+            "Sara Amrani",
+            "Youssef Alaoui",
+        ]
+
+    def test_store_update_deactivates_removed_pointage_employee(self):
+        user = make_user("store-employee-update@example.com", is_staff=True)
+        store = Store.objects.create(name="STORE UPDATE", code="STORE_UPDATE")
+        kept = Employee.objects.create(
+            store=store,
+            first_name="Sara",
+            last_name="Amrani",
+            full_name="Sara Amrani",
+        )
+        removed = Employee.objects.create(
+            store=store,
+            first_name="Youssef",
+            last_name="Alaoui",
+            full_name="Youssef Alaoui",
+        )
+        client = authenticated_client(user)
+
+        response = client.patch(
+            reverse("stores-detail", kwargs={"pk": store.pk}),
+            {
+                "employees": [
+                    {
+                        "id": kept.pk,
+                        "first_name": "Sara",
+                        "last_name": "Amrani",
+                    }
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        kept.refresh_from_db()
+        removed.refresh_from_db()
+        assert kept.is_active is True
+        assert removed.is_active is False
 
     def test_regular_user_cannot_create_store(self):
         user = make_user("store-user@example.com")

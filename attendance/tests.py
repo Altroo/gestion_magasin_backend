@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from attendance.models import (
+    COMMERCIAL_ADVISOR_POSITION,
     DEFAULT_ATTENDANCE_RESPONSIBLE,
     AttendanceImportBatch,
     AttendanceRecord,
@@ -119,6 +120,108 @@ def test_attendance_list_filters_by_store_ids_and_employee_ids():
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == matching.pk
+
+
+def test_normal_store_employee_list_only_returns_no_account_employees_for_that_store():
+    user, store, employee = create_store_setup()
+    employee.first_name = "Sara"
+    employee.last_name = "Amrani"
+    employee.position = COMMERCIAL_ADVISOR_POSITION
+    employee.save()
+    linked_user = User.objects.create_user(
+        email="linked-employee@example.com",
+        password="securepass123",
+    )
+    Employee.objects.create(
+        store=store,
+        user=linked_user,
+        full_name="Compte Application",
+        position=COMMERCIAL_ADVISOR_POSITION,
+    )
+    Employee.objects.create(
+        store=store,
+        full_name="Employé non commercial",
+        position="Caissier",
+    )
+    other_store = Store.objects.create(
+        code="employee-other-store",
+        name="EMPLOYEE OTHER STORE",
+    )
+    Employee.objects.create(
+        store=other_store,
+        full_name="Employé autre magasin",
+    )
+    client = authenticated_client(user)
+
+    response = client.get("/api/pointage/employees/", {"store": store.pk})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.data["results"]] == [employee.pk]
+
+
+def test_mbr_south_scope_returns_all_store_employees_and_attendance():
+    user, store, employee = create_store_setup()
+    role = StoreMembership.objects.get(user=user, store=store).role
+    mbr_south = Store.objects.create(
+        code="mbr-south",
+        name="MBR SOUTH",
+    )
+    StoreMembership.objects.create(user=user, store=mbr_south, role=role)
+    mbr_employee = Employee.objects.create(
+        store=mbr_south,
+        full_name="Mehdi Zorgane",
+    )
+    record = AttendanceRecord.objects.create(
+        store=store,
+        employee=employee,
+        date=date(2026, 6, 15),
+    )
+    client = authenticated_client(user)
+
+    employees_response = client.get(
+        "/api/pointage/employees/",
+        {"store": mbr_south.pk},
+    )
+    attendance_response = client.get(
+        "/api/pointage/",
+        {"store": mbr_south.pk},
+    )
+
+    assert employees_response.status_code == status.HTTP_200_OK
+    assert {
+        employee.pk,
+        mbr_employee.pk,
+    }.issubset({item["id"] for item in employees_response.data["results"]})
+    assert attendance_response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in attendance_response.data["results"]] == [
+        record.pk
+    ]
+
+
+def test_mbr_south_create_uses_selected_employee_store():
+    user, store, employee = create_store_setup()
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
+    mbr_south = Store.objects.create(
+        code="mbr-south",
+        name="MBR SOUTH",
+    )
+    client = authenticated_client(user)
+
+    response = client.post(
+        "/api/pointage/",
+        {
+            "store": mbr_south.pk,
+            "employee": employee.pk,
+            "date": "2026-06-16",
+            "shift": AttendanceRecord.Shifts.MORNING,
+            "status": AttendanceRecord.Statuses.PRESENT,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["store"] == store.pk
 
 
 def test_attendance_create_calculates_hours_and_delay():

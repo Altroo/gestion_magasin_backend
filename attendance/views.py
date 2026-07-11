@@ -10,7 +10,12 @@ from rest_framework.views import APIView
 
 from attendance.filters import AttendanceRecordFilter, EmployeeFilter
 from attendance.importers import import_attendance_from_workbook
-from attendance.models import AttendanceImportBatch, AttendanceRecord, Employee
+from attendance.models import (
+    COMMERCIAL_ADVISOR_POSITION,
+    AttendanceImportBatch,
+    AttendanceRecord,
+    Employee,
+)
 from attendance.serializers import (
     AttendanceImportBatchSerializer,
     AttendanceRecordSerializer,
@@ -18,7 +23,13 @@ from attendance.serializers import (
 )
 from attendance.workbooks import build_attendance_workbook
 from gestion_magasin_backend.utils import CustomPagination
-from store.permissions import MANAGEMENT_ROLES, get_store_from_request, user_has_store_access, user_store_ids
+from store.models import Store
+from store.permissions import (
+    MANAGEMENT_ROLES,
+    get_store_from_request,
+    user_has_store_access,
+    user_store_ids,
+)
 
 
 def _paginate(request, queryset, serializer_class):
@@ -33,11 +44,47 @@ def _ensure_management_access(user, store_id):
         raise PermissionDenied("Rôle insuffisant pour ce magasin.")
 
 
+def _requested_store(request):
+    raw_store_id = request.query_params.get("store") or request.query_params.get("store_id")
+    if not raw_store_id:
+        return None
+    try:
+        return Store.objects.filter(pk=int(raw_store_id), is_active=True).first()
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_mbr_south_scope(request):
+    store = _requested_store(request)
+    return bool(
+        store
+        and store.code == "mbr-south"
+        and user_has_store_access(request.user, store.pk)
+    )
+
+
+def _filter_params(request, *, global_scope=False):
+    params = request.query_params.copy()
+    if global_scope:
+        params.pop("store", None)
+        params.pop("store_id", None)
+    return params
+
+
 def _employee_queryset(request):
-    queryset = Employee.objects.select_related("store", "user")
-    if not request.user.is_staff:
+    global_scope = _is_mbr_south_scope(request)
+    queryset = Employee.objects.select_related("store", "user").filter(
+        user__isnull=True,
+        is_active=True,
+    )
+    if not global_scope:
+        queryset = queryset.filter(position=COMMERCIAL_ADVISOR_POSITION)
+    if not global_scope and not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    return EmployeeFilter(request.query_params, queryset=queryset).qs
+    return EmployeeFilter(
+        _filter_params(request, global_scope=global_scope),
+        queryset=queryset,
+    ).qs
 
 
 def _get_employee_for_user(request, pk):
@@ -97,10 +144,14 @@ class EmployeeDetailEditDeleteView(APIView):
 
 
 def _attendance_queryset(request):
+    global_scope = _is_mbr_south_scope(request)
     queryset = AttendanceRecord.objects.select_related("store", "employee", "created_by")
-    if not request.user.is_staff:
+    if not global_scope and not request.user.is_staff:
         queryset = queryset.filter(store_id__in=user_store_ids(request.user))
-    return AttendanceRecordFilter(request.query_params, queryset=queryset).qs
+    return AttendanceRecordFilter(
+        _filter_params(request, global_scope=global_scope),
+        queryset=queryset,
+    ).qs
 
 
 def _attendance_base_queryset(request):

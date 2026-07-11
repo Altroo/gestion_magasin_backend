@@ -13,13 +13,15 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "store",
             "store_name",
             "user",
+            "first_name",
+            "last_name",
             "full_name",
             "position",
             "is_active",
             "date_created",
             "date_updated",
         ]
-        read_only_fields = ["date_created", "date_updated"]
+        read_only_fields = ["user", "date_created", "date_updated"]
 
 
 class AttendanceRecordSerializer(serializers.ModelSerializer):
@@ -52,6 +54,19 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
             "date_updated",
         ]
         read_only_fields = ["hours_worked", "delay_minutes", "created_by", "date_created", "date_updated"]
+
+    def validate(self, attrs):
+        store = attrs.get("store", getattr(self.instance, "store", None))
+        employee = attrs.get("employee", getattr(self.instance, "employee", None))
+        if not store or not employee:
+            return attrs
+        if store.code == "mbr-south":
+            attrs["store"] = employee.store
+        elif employee.store_id != store.pk:
+            raise serializers.ValidationError(
+                {"employee": "Cet employé n'appartient pas au magasin sélectionné."}
+            )
+        return attrs
 
 
 class AttendanceImportBatchSerializer(serializers.ModelSerializer):

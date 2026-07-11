@@ -7,6 +7,7 @@ from simple_history.models import HistoricalRecords
 
 
 DEFAULT_ATTENDANCE_RESPONSIBLE = "Mehdi Zorgane"
+COMMERCIAL_ADVISOR_POSITION = "Conseiller commercial"
 
 
 class Employee(models.Model):
@@ -23,6 +24,18 @@ class Employee(models.Model):
         blank=True,
         related_name="employee_profiles",
         verbose_name=_("Utilisateur"),
+    )
+    first_name = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        verbose_name=_("Prénom"),
+    )
+    last_name = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        verbose_name=_("Nom"),
     )
     full_name = models.CharField(max_length=160, verbose_name=_("Nom complet"))
     position = models.CharField(max_length=120, blank=True, default="", verbose_name=_("Poste"))
@@ -43,6 +56,21 @@ class Employee(models.Model):
 
     def __str__(self) -> str:
         return self.full_name
+
+    def save(self, *args, **kwargs):
+        self.first_name = " ".join(self.first_name.split())
+        self.last_name = " ".join(self.last_name.split())
+        if self.first_name or self.last_name:
+            self.full_name = " ".join(
+                part for part in (self.first_name, self.last_name) if part
+            )
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {
+                    "first_name",
+                    "last_name",
+                    "full_name",
+                }
+        super().save(*args, **kwargs)
 
 
 class AttendanceRecord(models.Model):

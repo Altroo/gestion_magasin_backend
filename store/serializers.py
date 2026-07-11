@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 
+from attendance.models import COMMERCIAL_ADVISOR_POSITION, Employee
 from store.models import Role, Store, StoreMembership
 
 User = get_user_model()
@@ -38,11 +40,18 @@ class StoreManagedByItemSerializer(serializers.Serializer):
     role = serializers.CharField()
 
 
+class StoreEmployeeItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False)
+    first_name = serializers.CharField(max_length=80)
+    last_name = serializers.CharField(max_length=80)
+
+
 class StoreDetailSerializer(StoreSerializer):
     managed_by = StoreManagedByItemSerializer(many=True, write_only=True, required=False)
+    employees = StoreEmployeeItemSerializer(many=True, write_only=True, required=False)
 
     class Meta(StoreSerializer.Meta):
-        fields = StoreSerializer.Meta.fields + ["managed_by"]
+        fields = StoreSerializer.Meta.fields + ["managed_by", "employees"]
 
     @staticmethod
     def _resolve_role(value):
@@ -81,18 +90,89 @@ class StoreDetailSerializer(StoreSerializer):
             user_id__in=submitted_user_ids
         ).delete()
 
+    @staticmethod
+    def update_employees(store, items):
+        submitted_employee_ids = []
+        submitted_names = set()
+        for item in items:
+            first_name = " ".join(item["first_name"].split())
+            last_name = " ".join(item["last_name"].split())
+            full_name = f"{first_name} {last_name}".strip()
+            normalized_name = full_name.casefold()
+            if normalized_name in submitted_names:
+                raise serializers.ValidationError(
+                    {"employees": _("Un employé ne peut être ajouté qu'une seule fois.")}
+                )
+            submitted_names.add(normalized_name)
+
+            employee_id = item.get("id")
+            if employee_id:
+                try:
+                    employee = Employee.objects.get(
+                        pk=employee_id,
+                        store=store,
+                        user__isnull=True,
+                    )
+                except Employee.DoesNotExist as exc:
+                    raise serializers.ValidationError(
+                        {"employees": _("Employé invalide pour ce magasin.")}
+                    ) from exc
+            else:
+                employee = Employee.objects.filter(
+                    store=store,
+                    full_name__iexact=full_name,
+                    user__isnull=True,
+                ).first()
+                if employee is None:
+                    if Employee.objects.filter(
+                        store=store,
+                        full_name__iexact=full_name,
+                    ).exists():
+                        raise serializers.ValidationError(
+                            {"employees": _("Ce nom est déjà lié à un compte utilisateur.")}
+                        )
+                    employee = Employee(store=store, full_name=full_name)
+
+            duplicate = Employee.objects.filter(
+                store=store,
+                full_name__iexact=full_name,
+            ).exclude(pk=employee.pk)
+            if duplicate.exists():
+                raise serializers.ValidationError(
+                    {"employees": _("Un employé avec ce nom existe déjà dans ce magasin.")}
+                )
+
+            employee.first_name = first_name
+            employee.last_name = last_name
+            employee.position = COMMERCIAL_ADVISOR_POSITION
+            employee.is_active = True
+            employee.save()
+            submitted_employee_ids.append(employee.pk)
+
+        Employee.objects.filter(store=store, user__isnull=True).exclude(
+            pk__in=submitted_employee_ids
+        ).update(is_active=False)
+
+    @transaction.atomic
     def create(self, validated_data):
         managed_items = validated_data.pop("managed_by", None)
+        employee_items = validated_data.pop("employees", None)
         store = super().create(validated_data)
         if managed_items is not None:
             self.update_memberships(store, managed_items)
+        if employee_items is not None:
+            self.update_employees(store, employee_items)
         return store
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         managed_items = validated_data.pop("managed_by", None)
+        employee_items = validated_data.pop("employees", None)
         instance = super().update(instance, validated_data)
         if managed_items is not None:
             self.update_memberships(instance, managed_items)
+        if employee_items is not None:
+            self.update_employees(instance, employee_items)
         return instance
 
     def to_representation(self, instance):
@@ -105,6 +185,18 @@ class StoreDetailSerializer(StoreSerializer):
                 "membership_id": membership.pk,
             }
             for membership in instance.memberships.select_related("role", "user")
+        ]
+        representation["employees"] = [
+            {
+                "id": employee.pk,
+                "first_name": employee.first_name,
+                "last_name": employee.last_name,
+                "full_name": employee.full_name,
+            }
+            for employee in instance.employees.filter(
+                user__isnull=True,
+                is_active=True,
+            ).order_by("first_name", "last_name")
         ]
         return representation
 
