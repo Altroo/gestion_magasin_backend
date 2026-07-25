@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from catalog.models import Category, Product, ProductUnit
+from catalog.models import Category, Product, ProductStockTrackingItem, ProductUnit
 from stock.models import StockBalance
 from store.models import Role, Store, StoreMembership
 
@@ -118,6 +118,37 @@ def test_product_list_accepts_comma_separated_boolean_filters():
     assert {item["id"] for item in response.data["results"]} == {active.pk, inactive.pk}
 
 
+def test_product_list_filters_across_all_expiration_dates():
+    user, store, category = create_store_setup()
+    product = create_product("ART-EXP-FILTER", "Article expirations", category)
+    ProductStockTrackingItem.objects.create(
+        product=product,
+        default_stock_alert=Decimal("2.000"),
+        expiration_date="2026-08-01",
+        position=0,
+    )
+    ProductStockTrackingItem.objects.create(
+        product=product,
+        default_stock_alert=Decimal("2.000"),
+        expiration_date="2027-02-01",
+        position=1,
+    )
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/catalog/products/",
+        {
+            "store": store.pk,
+            "expiration_date_after": "2027-01-01",
+            "expiration_date_before": "2027-12-31",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == product.pk
+
+
 def test_product_bulk_delete_requires_store_management_role():
     user, store, category = create_store_setup(role_code=Role.Codes.LECTURE)
     product = create_product("ART-DELETE", "Article delete", category)
@@ -203,6 +234,134 @@ def test_product_create_requires_expiration_date_when_tracking_is_enabled():
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "expiration_date" in response.data["details"]
+
+
+def test_product_create_persists_multiple_stock_tracking_items():
+    user, store, category = create_store_setup()
+    unit = ProductUnit.default()
+    client = authenticated_client(user)
+
+    response = client.post(
+        f"/api/catalog/products/?store={store.pk}",
+        {
+            "reference": "MULTI-EXP",
+            "barcode": "MULTI-EXP",
+            "name": "Article plusieurs expirations",
+            "category": category.pk,
+            "unit": unit.pk,
+            "purchase_price": "10.00",
+            "wholesale_price": "12.00",
+            "detail_price": "14.00",
+            "counter_price": "15.00",
+            "stock_tracking_items": [
+                {
+                    "default_stock_alert": "2.000",
+                    "expiration_date": "2026-10-15",
+                    "requires_expiration_date": True,
+                    "shelf_life_days": 90,
+                },
+                {
+                    "default_stock_alert": "5.000",
+                    "expiration_date": "2027-01-20",
+                    "requires_expiration_date": True,
+                    "shelf_life_days": 180,
+                },
+            ],
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert len(response.data["stock_tracking_items"]) == 2
+    assert [
+        item["expiration_date"] for item in response.data["stock_tracking_items"]
+    ] == ["2026-10-15", "2027-01-20"]
+    product = Product.objects.get(pk=response.data["id"])
+    assert product.stock_tracking_items.count() == 2
+    assert product.default_stock_alert == Decimal("2.000")
+    assert product.expiration_date.isoformat() == "2026-10-15"
+
+
+def test_product_update_replaces_stock_tracking_items():
+    user, store, category = create_store_setup()
+    product = create_product("MULTI-UPDATE", "Article à modifier", category)
+    ProductStockTrackingItem.objects.create(
+        product=product,
+        default_stock_alert=Decimal("2.000"),
+        expiration_date="2026-08-01",
+        requires_expiration_date=True,
+        shelf_life_days=30,
+        position=0,
+    )
+    client = authenticated_client(user)
+
+    response = client.patch(
+        f"/api/catalog/products/{product.pk}/?store={store.pk}",
+        {
+            "stock_tracking_items": [
+                {
+                    "default_stock_alert": "3.000",
+                    "expiration_date": "2026-11-01",
+                    "requires_expiration_date": True,
+                    "shelf_life_days": 60,
+                },
+                {
+                    "default_stock_alert": "4.000",
+                    "expiration_date": None,
+                    "requires_expiration_date": False,
+                    "shelf_life_days": None,
+                },
+            ]
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data["stock_tracking_items"]) == 2
+    assert list(
+        product.stock_tracking_items.order_by("position").values_list(
+            "position", "default_stock_alert"
+        )
+    ) == [(0, Decimal("3.000")), (1, Decimal("4.000"))]
+    product.refresh_from_db()
+    assert product.expiration_date.isoformat() == "2026-11-01"
+
+
+def test_product_stock_tracking_item_requires_its_expiration_date():
+    user, store, category = create_store_setup()
+    client = authenticated_client(user)
+
+    response = client.post(
+        f"/api/catalog/products/?store={store.pk}",
+        {
+            "reference": "MULTI-INVALID",
+            "barcode": "MULTI-INVALID",
+            "name": "Article expiration invalide",
+            "category": category.pk,
+            "unit": ProductUnit.default().pk,
+            "purchase_price": "10.00",
+            "wholesale_price": "12.00",
+            "detail_price": "14.00",
+            "counter_price": "15.00",
+            "stock_tracking_items": [
+                {
+                    "default_stock_alert": "2.000",
+                    "expiration_date": None,
+                    "requires_expiration_date": True,
+                    "shelf_life_days": 90,
+                }
+            ],
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (
+        "expiration_date"
+        in response.data["details"]["stock_tracking_items"][0]
+    )
 
 
 def test_product_scan_unknown_barcode_returns_barcode_error():

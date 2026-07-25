@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from attendance.models import AttendanceRecord
-from catalog.models import Category, Product
+from catalog.models import Category, Product, ProductStockTrackingItem
 from finance.models import Expense
 from reporting.filters import ReportingScopeFilter
 from sales.models import Customer, Promotion, Sale, SaleLine
@@ -94,12 +94,25 @@ class StoreDashboardReportView(APIView):
             if balance.is_low_stock
         )
         today = timezone.localdate()
-        expiring_count = Product.objects.filter(
-            expiration_date__isnull=False,
-            expiration_date__gte=today,
-            expiration_date__lte=today + timedelta(days=30),
-        ).count()
-        expired_count = Product.objects.filter(expiration_date__isnull=False, expiration_date__lt=today).count()
+        expiring_count = (
+            ProductStockTrackingItem.objects.filter(
+                expiration_date__isnull=False,
+                expiration_date__gte=today,
+                expiration_date__lte=today + timedelta(days=30),
+            )
+            .values("product_id")
+            .distinct()
+            .count()
+        )
+        expired_count = (
+            ProductStockTrackingItem.objects.filter(
+                expiration_date__isnull=False,
+                expiration_date__lt=today,
+            )
+            .values("product_id")
+            .distinct()
+            .count()
+        )
 
         sales_trend = (
             sales.annotate(day=TruncDate("date_created"))

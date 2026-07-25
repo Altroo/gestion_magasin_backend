@@ -1,12 +1,13 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from catalog.models import Category, Product
+from catalog.models import Category, Product, ProductStockTrackingItem
 from finance.models import Expense, ExpenseCategory
 from sales.models import Sale
 from stock.models import StockBalance
@@ -63,6 +64,36 @@ def test_dashboard_report_returns_kpis_and_low_stock_alerts():
     assert response.status_code == status.HTTP_200_OK
     assert response.data["kpis"]["low_stock_count"] == 1
     assert len(response.data["stock_alerts"]) == 1
+
+
+def test_dashboard_counts_product_when_any_stock_tracking_item_expires_soon():
+    user, store, product = create_store_setup()
+    today = timezone.localdate()
+    ProductStockTrackingItem.objects.create(
+        product=product,
+        default_stock_alert=Decimal("5.000"),
+        expiration_date=today + timedelta(days=90),
+        position=0,
+    )
+    ProductStockTrackingItem.objects.create(
+        product=product,
+        default_stock_alert=Decimal("5.000"),
+        expiration_date=today + timedelta(days=10),
+        position=1,
+    )
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/reports/dashboard/",
+        {
+            "store": store.pk,
+            "date_from": today.isoformat(),
+            "date_to": today.isoformat(),
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["kpis"]["expiring_count"] == 1
 
 
 def test_dashboard_report_all_stores_scope_for_staff():

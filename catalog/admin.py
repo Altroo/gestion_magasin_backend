@@ -1,7 +1,13 @@
 from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
-from catalog.models import Category, Product, ProductImportBatch, ProductUnit
+from catalog.models import (
+    Category,
+    Product,
+    ProductImportBatch,
+    ProductStockTrackingItem,
+    ProductUnit,
+)
 from gestion_magasin_backend.admin_history import register_history_admin
 
 
@@ -37,6 +43,20 @@ class ProductAdmin(SimpleHistoryAdmin):
     search_fields = ("reference", "barcode", "name")
 
 
+@admin.register(ProductStockTrackingItem)
+class ProductStockTrackingItemAdmin(SimpleHistoryAdmin):
+    list_display = (
+        "product",
+        "position",
+        "default_stock_alert",
+        "expiration_date",
+        "requires_expiration_date",
+        "shelf_life_days",
+    )
+    list_filter = ("requires_expiration_date", "expiration_date")
+    search_fields = ("product__reference", "product__barcode", "product__name")
+
+
 @admin.register(ProductImportBatch)
 class ProductImportBatchAdmin(SimpleHistoryAdmin):
     list_display = ("file_name", "store", "imported_count", "skipped_count", "date_created")
@@ -62,6 +82,19 @@ register_history_admin(
     display_fields=("id", "reference", "barcode", "name", "category", "unit", "counter_price", "requires_expiration_date", "expiration_date", "is_active"),
     list_filter=("category", "unit", "requires_expiration_date", "is_active"),
     search_fields=("reference", "barcode", "name"),
+)
+register_history_admin(
+    ProductStockTrackingItem,
+    display_fields=(
+        "id",
+        "product",
+        "position",
+        "default_stock_alert",
+        "expiration_date",
+        "requires_expiration_date",
+    ),
+    list_filter=("requires_expiration_date", "expiration_date"),
+    search_fields=("product__reference", "product__barcode", "product__name"),
 )
 register_history_admin(
     ProductImportBatch,

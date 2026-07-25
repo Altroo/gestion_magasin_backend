@@ -138,6 +138,51 @@ class Product(models.Model):
         super().save(*args, **kwargs)
 
 
+class ProductStockTrackingItem(models.Model):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="stock_tracking_items",
+        verbose_name=_("Article"),
+    )
+    default_stock_alert = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=0,
+        verbose_name=_("Stock minimum par défaut"),
+    )
+    expiration_date = models.DateField(
+        null=True, blank=True, verbose_name=_("Date expiration")
+    )
+    requires_expiration_date = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name=_("Suivi expiration"),
+        help_text=_("Rend la date d'expiration obligatoire pour cette ligne."),
+    )
+    shelf_life_days = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name=_("Durée")
+    )
+    position = models.PositiveIntegerField(default=0, verbose_name=_("Position"))
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = _("Ligne stock et suivi")
+        verbose_name_plural = _("Lignes stock et suivi")
+        ordering = ("position", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("product", "position"),
+                name="unique_product_stock_tracking_position",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product} - {self.position + 1}"
+
+
 class ProductImportBatch(models.Model):
     store = models.ForeignKey(
         "store.Store",

@@ -47,7 +47,11 @@ def _unit_queryset(request):
 
 
 def _product_queryset(request):
-    queryset = Product.objects.select_related("category", "unit").all()
+    queryset = (
+        Product.objects.select_related("category", "unit")
+        .prefetch_related("stock_tracking_items")
+        .all()
+    )
     store_id = request.query_params.get("store") or request.query_params.get("store_id")
 
     queryset = ProductFilter(request.query_params, queryset=queryset).qs
@@ -79,7 +83,11 @@ def _product_serializer_context(request):
 
 def _get_product(pk):
     try:
-        return Product.objects.select_related("category", "unit").get(pk=pk)
+        return (
+            Product.objects.select_related("category", "unit")
+            .prefetch_related("stock_tracking_items")
+            .get(pk=pk)
+        )
     except Product.DoesNotExist:
         raise Http404(_("Aucun article ne correspond à la requête."))
 

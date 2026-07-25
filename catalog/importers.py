@@ -4,7 +4,13 @@ from typing import BinaryIO
 
 from django.db import transaction
 
-from catalog.models import Category, Product, ProductImportBatch, ProductUnit
+from catalog.models import (
+    Category,
+    Product,
+    ProductImportBatch,
+    ProductStockTrackingItem,
+    ProductUnit,
+)
 from stock.models import StockBalance
 
 
@@ -153,6 +159,16 @@ def import_products_from_workbook(
                 "default_stock_alert": _decimal(row[indexes["default_stock_alert"]]) if "default_stock_alert" in indexes else Decimal("0"),
                 "expiration_date": _date_or_none(row[indexes["expiration_date"]]) if "expiration_date" in indexes else None,
                 "shelf_life_days": _int_or_none(row[indexes["shelf_life_days"]]) if "shelf_life_days" in indexes else None,
+            },
+        )
+        ProductStockTrackingItem.objects.update_or_create(
+            product=product,
+            position=0,
+            defaults={
+                "default_stock_alert": product.default_stock_alert,
+                "expiration_date": product.expiration_date,
+                "requires_expiration_date": product.requires_expiration_date,
+                "shelf_life_days": product.shelf_life_days,
             },
         )
         balance, created = StockBalance.objects.get_or_create(

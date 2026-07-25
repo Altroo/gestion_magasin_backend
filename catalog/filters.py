@@ -53,10 +53,14 @@ class ProductFilter(django_filters.FilterSet):
     unit_ids = IntCSVInFilter(field_name="unit_id")
     is_active = BoolCSVInFilter(field_name="is_active")
     expiration_date_after = django_filters.CharFilter(
-        field_name="expiration_date", lookup_expr="gte"
+        field_name="stock_tracking_items__expiration_date",
+        lookup_expr="gte",
+        distinct=True,
     )
     expiration_date_before = django_filters.CharFilter(
-        field_name="expiration_date", lookup_expr="lte"
+        field_name="stock_tracking_items__expiration_date",
+        lookup_expr="lte",
+        distinct=True,
     )
 
     reference = text_lookup_filter("reference", "exact")
