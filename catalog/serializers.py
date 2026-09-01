@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -197,11 +199,12 @@ class ProductSerializer(serializers.ModelSerializer):
         balance = getattr(instance, "_selected_balance", None)
         if balance:
             return balance.quantity
-        return (
+        quantity = (
             StockBalance.objects.filter(store_id=store_id, product=instance)
             .values_list("quantity", flat=True)
             .first()
         )
+        return quantity if quantity is not None else Decimal("0")
 
     def get_min_stock(self, instance):
         store_id = self.context.get("store_id")

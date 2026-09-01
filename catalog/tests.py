@@ -378,6 +378,20 @@ def test_product_scan_unknown_barcode_returns_barcode_error():
     assert response.data["details"]["barcode"] == ["Article introuvable."]
 
 
+def test_product_scan_reports_zero_when_store_has_no_stock_balance():
+    user, store, category = create_store_setup()
+    product = create_product("ART-NO-STOCK", "Article sans stock", category)
+    client = authenticated_client(user)
+
+    response = client.get(
+        "/api/catalog/products/scan/",
+        {"store": store.pk, "code": product.barcode},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert Decimal(response.data["available_stock"]) == Decimal("0")
+
+
 def test_product_import_guide_email_requires_management_role():
     user, store, _category = create_store_setup(role_code=Role.Codes.LECTURE)
     client = authenticated_client(user)
