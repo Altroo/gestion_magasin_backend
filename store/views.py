@@ -1,5 +1,7 @@
+import mimetypes
+
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
@@ -99,16 +101,16 @@ class StoreListCreateView(APIView):
     def get(request, *args, **kwargs):
         paginator = CustomPagination()
         page = paginator.paginate_queryset(_filtered_stores_for_user(request), request)
-        serializer = StoreSerializer(page, many=True)
+        serializer = StoreSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
     @staticmethod
     def post(request, *args, **kwargs):
-        serializer = StoreDetailSerializer(data=request.data)
+        serializer = StoreDetailSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         store = serializer.save()
         return Response(
-            StoreDetailSerializer(store).data,
+            StoreDetailSerializer(store, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -128,19 +130,28 @@ class StoreDetailEditDeleteView(APIView):
             raise Http404(_("Aucun magasin ne correspond à la requête."))
 
     def get(self, request, pk, *args, **kwargs):
-        serializer = StoreDetailSerializer(self.get_object(pk))
+        serializer = StoreDetailSerializer(
+            self.get_object(pk), context={"request": request}
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, *args, **kwargs):
         store = self.get_object(pk)
-        serializer = StoreDetailSerializer(store, data=request.data)
+        serializer = StoreDetailSerializer(
+            store, data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk, *args, **kwargs):
         store = self.get_object(pk)
-        serializer = StoreDetailSerializer(store, data=request.data, partial=True)
+        serializer = StoreDetailSerializer(
+            store,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -150,6 +161,26 @@ class StoreDetailEditDeleteView(APIView):
         _ensure_store_can_be_deleted(store)
         store.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StoreLogoView(APIView):
+    """Serve logo bytes through the authenticated API for receipt rasterization."""
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @staticmethod
+    def get(request, pk, *args, **kwargs):
+        try:
+            store = _filtered_stores_for_user(request).get(pk=pk)
+        except Store.DoesNotExist:
+            raise Http404(_("Aucun magasin ne correspond à la requête."))
+        if not store.logo:
+            raise Http404(_("Ce magasin n'a pas de logo."))
+        content_type = mimetypes.guess_type(store.logo.name)[0] or "application/octet-stream"
+        response = FileResponse(store.logo.open("rb"), content_type=content_type)
+        response["Content-Disposition"] = f'inline; filename="{store.logo.name.rsplit("/", 1)[-1]}"'
+        response["Cache-Control"] = "private, max-age=300"
+        return response
 
 
 class BulkDeleteStoresView(APIView):
@@ -189,7 +220,9 @@ class MyStoresView(APIView):
                 [
                     {
                         "id": store.id,
-                        "store": StoreSerializer(store).data,
+                        "store": StoreSerializer(
+                            store, context={"request": request}
+                        ).data,
                         "role": RoleSerializer(direction_role).data,
                         "is_active": True,
                     }
@@ -206,7 +239,9 @@ class MyStoresView(APIView):
             .order_by("store__name")
         )
         return Response(
-            UserStoreSerializer(memberships, many=True).data,
+            UserStoreSerializer(
+                memberships, many=True, context={"request": request}
+            ).data,
             status=status.HTTP_200_OK,
         )
 

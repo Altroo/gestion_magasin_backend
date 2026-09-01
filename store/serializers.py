@@ -1,12 +1,41 @@
+import json
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
+from rest_framework import serializers
 
 from attendance.models import COMMERCIAL_ADVISOR_POSITION, Employee
 from store.models import Role, Store, StoreMembership
 
 User = get_user_model()
+
+
+class MultipartJsonListField(serializers.ListField):
+    """Accept a normal JSON list or one JSON-encoded multipart form value."""
+
+    default_error_messages = {
+        "invalid_json": _("Cette valeur doit être une liste JSON valide."),
+    }
+
+    def get_value(self, dictionary):
+        value = super().get_value(dictionary)
+        if (
+            isinstance(value, list)
+            and len(value) == 1
+            and isinstance(value[0], str)
+            and value[0].lstrip().startswith("[")
+        ):
+            return value[0]
+        return value
+
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (TypeError, ValueError):
+                self.fail("invalid_json")
+        return super().to_internal_value(data)
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -17,6 +46,7 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class StoreSerializer(serializers.ModelSerializer):
     members_count = serializers.IntegerField(read_only=True)
+    logo = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Store
@@ -24,6 +54,7 @@ class StoreSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "code",
+            "logo",
             "address",
             "phone",
             "is_active",
@@ -47,11 +78,31 @@ class StoreEmployeeItemSerializer(serializers.Serializer):
 
 
 class StoreDetailSerializer(StoreSerializer):
-    managed_by = StoreManagedByItemSerializer(many=True, write_only=True, required=False)
-    employees = StoreEmployeeItemSerializer(many=True, write_only=True, required=False)
+    managed_by = MultipartJsonListField(
+        child=StoreManagedByItemSerializer(),
+        write_only=True,
+        required=False,
+    )
+    employees = MultipartJsonListField(
+        child=StoreEmployeeItemSerializer(),
+        write_only=True,
+        required=False,
+    )
+    remove_logo = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta(StoreSerializer.Meta):
-        fields = StoreSerializer.Meta.fields + ["managed_by", "employees"]
+        fields = StoreSerializer.Meta.fields + ["managed_by", "employees", "remove_logo"]
+
+    def validate(self, attrs):
+        if attrs.get("remove_logo") and attrs.get("logo"):
+            raise serializers.ValidationError(
+                {
+                    "logo": _(
+                        "Un nouveau logo ne peut pas être envoyé en même temps que sa suppression."
+                    )
+                }
+            )
+        return attrs
 
     @staticmethod
     def _resolve_role(value):
@@ -157,6 +208,7 @@ class StoreDetailSerializer(StoreSerializer):
     def create(self, validated_data):
         managed_items = validated_data.pop("managed_by", None)
         employee_items = validated_data.pop("employees", None)
+        validated_data.pop("remove_logo", False)
         store = super().create(validated_data)
         if managed_items is not None:
             self.update_memberships(store, managed_items)
@@ -168,11 +220,24 @@ class StoreDetailSerializer(StoreSerializer):
     def update(self, instance, validated_data):
         managed_items = validated_data.pop("managed_by", None)
         employee_items = validated_data.pop("employees", None)
+        remove_logo = validated_data.pop("remove_logo", False)
+        logo_changed = remove_logo or "logo" in validated_data
+        previous_logo_name = instance.logo.name if instance.logo else None
+        previous_logo_storage = instance.logo.storage if instance.logo else None
+        if remove_logo:
+            validated_data["logo"] = None
         instance = super().update(instance, validated_data)
         if managed_items is not None:
             self.update_memberships(instance, managed_items)
         if employee_items is not None:
             self.update_employees(instance, employee_items)
+        if (
+            logo_changed
+            and previous_logo_name
+            and previous_logo_storage
+            and previous_logo_name != (instance.logo.name if instance.logo else None)
+        ):
+            transaction.on_commit(lambda: previous_logo_storage.delete(previous_logo_name))
         return instance
 
     def to_representation(self, instance):

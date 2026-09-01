@@ -1,8 +1,12 @@
+import json
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -29,6 +33,12 @@ def make_user(email, is_staff=False):
         password="securepass123",
         is_staff=is_staff,
     )
+
+
+def make_logo_upload(filename="store-logo.png"):
+    buffer = BytesIO()
+    Image.new("RGB", (24, 24), color="#1976d2").save(buffer, format="PNG")
+    return SimpleUploadedFile(filename, buffer.getvalue(), content_type="image/png")
 
 
 class TestStoreAPI:
@@ -80,6 +90,101 @@ class TestStoreAPI:
 
         assert response.status_code == status.HTTP_201_CREATED
         assert Store.objects.filter(code="MBR_TEST").exists()
+
+    def test_staff_can_create_store_with_logo_and_absolute_api_representation(
+        self, settings, tmp_path
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        user = make_user("store-logo-admin@example.com", is_staff=True)
+        Role.objects.get_or_create(
+            code=Role.Codes.DIRECTION,
+            defaults={"name": "Direction", "rank": 1},
+        )
+        client = authenticated_client(user)
+
+        response = client.post(
+            reverse("stores-list"),
+            {
+                "name": "STORE LOGO",
+                "code": "STORE_LOGO",
+                "logo": make_logo_upload(),
+                "is_active": "true",
+            },
+            format="multipart",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED, response.data
+        store = Store.objects.get(code="STORE_LOGO")
+        assert store.logo.name.startswith("store_logos/")
+        assert store.logo.name.endswith(".png")
+        assert response.data["logo"] == f"http://testserver{store.logo.url}"
+        assert store.history.latest().logo == store.logo.name
+
+        detail_response = client.get(reverse("stores-detail", args=[store.pk]))
+        mine_response = client.get(reverse("stores-mine"))
+
+        assert detail_response.status_code == status.HTTP_200_OK
+        assert detail_response.data["logo"] == response.data["logo"]
+
+        logo_response = client.get(reverse("stores-logo", args=[store.pk]))
+        assert logo_response.status_code == status.HTTP_200_OK
+        assert logo_response["Content-Type"] == "image/png"
+        assert b"".join(logo_response.streaming_content).startswith(b"\x89PNG")
+
+        nested_store = next(
+            item["store"] for item in mine_response.data if item["store"]["id"] == store.pk
+        )
+        assert nested_store["logo"] == response.data["logo"]
+
+    def test_staff_can_edit_logo_and_json_lists_through_multipart(
+        self, settings, tmp_path
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        user = make_user("store-logo-edit-admin@example.com", is_staff=True)
+        member = make_user("store-logo-member@example.com")
+        role, _ = Role.objects.get_or_create(
+            code=Role.Codes.RESPONSABLE,
+            defaults={"name": "Responsable", "rank": 2},
+        )
+        store = Store.objects.create(name="STORE LOGO EDIT", code="STORE_LOGO_EDIT")
+        client = authenticated_client(user)
+
+        response = client.patch(
+            reverse("stores-detail", args=[store.pk]),
+            {
+                "logo": make_logo_upload("edited-logo.png"),
+                "managed_by": json.dumps([{"pk": member.pk, "role": role.code}]),
+                "employees": json.dumps(
+                    [{"first_name": "Sara", "last_name": "Amrani"}]
+                ),
+            },
+            format="multipart",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.data
+        store.refresh_from_db()
+        assert response.data["logo"] == f"http://testserver{store.logo.url}"
+        assert StoreMembership.objects.filter(
+            store=store, user=member, role=role, is_active=True
+        ).exists()
+        assert Employee.objects.filter(
+            store=store,
+            first_name="Sara",
+            last_name="Amrani",
+            is_active=True,
+        ).exists()
+
+        remove_response = client.patch(
+            reverse("stores-detail", args=[store.pk]),
+            {"remove_logo": "true"},
+            format="multipart",
+        )
+
+        assert remove_response.status_code == status.HTTP_200_OK, remove_response.data
+        store.refresh_from_db()
+        assert not store.logo
+        assert remove_response.data["logo"] is None
+        assert store.history.latest().logo in {None, ""}
 
     def test_staff_can_create_store_with_assigned_users(self):
         user = make_user("store-owner@example.com", is_staff=True)

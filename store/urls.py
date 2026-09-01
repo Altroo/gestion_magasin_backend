@@ -5,6 +5,7 @@ from store.views import (
     MyStoresView,
     RoleListView,
     StoreDetailEditDeleteView,
+    StoreLogoView,
     StoreListCreateView,
     StoreMembershipDetailEditDeleteView,
     StoreMembershipListCreateView,
@@ -25,5 +26,6 @@ urlpatterns = [
         StoreMembershipDetailEditDeleteView.as_view(),
         name="store-memberships-detail",
     ),
+    path("<int:pk>/logo/", StoreLogoView.as_view(), name="stores-logo"),
     path("<int:pk>/", StoreDetailEditDeleteView.as_view(), name="stores-detail"),
 ]

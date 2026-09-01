@@ -13,7 +13,7 @@ class RoleAdmin(SimpleHistoryAdmin):
 
 @admin.register(Store)
 class StoreAdmin(SimpleHistoryAdmin):
-    list_display = ("name", "code", "phone", "is_global_stock", "is_active")
+    list_display = ("name", "code", "logo", "phone", "is_global_stock", "is_active")
     list_filter = ("is_global_stock", "is_active")
     search_fields = ("name", "code", "address", "phone")
 
@@ -32,7 +32,7 @@ register_history_admin(
 )
 register_history_admin(
     Store,
-    display_fields=("id", "name", "code", "is_global_stock", "is_active"),
+    display_fields=("id", "name", "code", "logo", "is_global_stock", "is_active"),
     list_filter=("is_global_stock", "is_active"),
     search_fields=("name", "code", "address", "phone"),
 )
