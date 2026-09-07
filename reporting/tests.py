@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -59,7 +59,8 @@ def test_dashboard_report_returns_kpis_and_low_stock_alerts():
     Sale.objects.create(store=store, seller=user, total=Decimal("250.00"))
     client = authenticated_client(user)
 
-    response = client.get("/api/reports/dashboard/", {"store": store.pk, "date_from": "2026-06-01", "date_to": "2026-06-30"})
+    response = client.get("/api/reports/dashboard/", {"store": store.pk, "date_from": "2026-06-01",
+                                                      "date_to": "2026-06-30"})
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["kpis"]["low_stock_count"] == 1
@@ -101,8 +102,12 @@ def test_dashboard_report_all_stores_scope_for_staff():
     user.is_staff = True
     user.save(update_fields=["is_staff"])
     other_store = Store.objects.create(code="report-other", name="REPORT OTHER", is_active=True)
-    Sale.objects.create(store=store, seller=user, total=Decimal("100.00"))
-    Sale.objects.create(store=other_store, seller=user, total=Decimal("50.00"))
+    sale = Sale.objects.create(store=store, seller=user, total=Decimal("100.00"))
+    other_sale = Sale.objects.create(store=other_store, seller=user, total=Decimal("50.00"))
+    # auto_now_add uses the current date; place both sales in the requested period.
+    Sale.objects.filter(pk__in=[sale.pk, other_sale.pk]).update(
+        date_created=timezone.make_aware(datetime(2026, 6, 15, 12)),
+    )
     client = authenticated_client(user)
 
     response = client.get(
@@ -112,7 +117,67 @@ def test_dashboard_report_all_stores_scope_for_staff():
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["store"]["id"] is None
-    assert response.data["kpis"]["sales_count"] >= 2
+    assert response.data["kpis"]["sales_count"] == 2
+    assert response.data["kpis"]["sales_total"] == Decimal("150.00")
+    assert response.data["sales_trend"] == [
+        {"date": date(2026, 6, 15), "total": Decimal("150.00"), "count": 2},
+    ]
+
+
+@pytest.mark.parametrize(
+    "is_staff,all_stores,expected_count,expected_total",
+    [
+        pytest.param(True, True, 2, "150.00", id="staff-all-stores"),
+        pytest.param(True, False, 1, "100.00", id="staff-selected-store"),
+        pytest.param(False, True, 1, "100.00", id="member-all-stores"),
+        pytest.param(False, False, 1, "100.00", id="member-selected-store"),
+    ],
+)
+def test_dashboard_report_filters_sales_by_period_status_and_store(
+    is_staff, all_stores, expected_count, expected_total,
+):
+    user, store, _product = create_store_setup()
+    user.is_staff = is_staff
+    user.save(update_fields=["is_staff"])
+    other_store = Store.objects.create(
+        code="report-other", name="REPORT OTHER", is_active=True,
+    )
+    for sale_store, created_at, sale_status, total in [
+        (store, datetime(2026, 6, 1), Sale.Statuses.CONFIRMED, "100.00"),
+        (
+            other_store,
+            datetime(2026, 6, 30, 23, 59, 59, 999999),
+            Sale.Statuses.CONFIRMED,
+            "50.00",
+        ),
+        (
+            store,
+            datetime(2026, 5, 31, 23, 59, 59, 999999),
+            Sale.Statuses.CONFIRMED,
+            "200.00",
+        ),
+        (store, datetime(2026, 7, 1), Sale.Statuses.CONFIRMED, "300.00"),
+        (store, datetime(2026, 6, 15, 12), Sale.Statuses.VOID, "400.00"),
+    ]:
+        sale = Sale.objects.create(
+            store=sale_store, seller=user, status=sale_status, total=Decimal(total),
+        )
+        Sale.objects.filter(pk=sale.pk).update(
+            date_created=timezone.make_aware(created_at),
+        )
+
+    response = authenticated_client(user).get(
+        "/api/reports/dashboard/",
+        {
+            "store": "all" if all_stores else store.pk,
+            "date_from": "2026-06-01",
+            "date_to": "2026-06-30",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["kpis"]["sales_count"] == expected_count
+    assert response.data["kpis"]["sales_total"] == Decimal(expected_total)
 
 
 def test_stock_export_csv_returns_file_response():
