@@ -151,3 +151,9 @@ def test_ai_rate_limit_is_separate_from_page_requests_and_still_enforced():
     finally:
         ordinary.cache.delete(ordinary_key)
         assistant.cache.delete(ai_key)
+
+
+def test_configured_gateway_identity_matches_this_application():
+    from gestion_magasin_backend import settings as application_settings
+
+    assert application_settings.AI_ASSISTANT_SERVICE_NAME == "gestion_magasin"

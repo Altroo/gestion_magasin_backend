@@ -297,7 +297,9 @@ AXES_IPWARE_PROXY_COUNT = 1
 AXES_IPWARE_PROXY_ORDER = "left-most"
 
 AI_ASSISTANT_ENABLED = config("AI_ASSISTANT_ENABLED", default=False, cast=bool)
-AI_ASSISTANT_SERVICE_NAME = "facturation"
+AI_ASSISTANT_SERVICE_NAME = config(
+    "AI_ASSISTANT_SERVICE_NAME", default="gestion_magasin"
+)
 AI_ASSISTANT_SERVICE_SECRET = config("AI_ASSISTANT_SERVICE_SECRET", default="")
 AI_ASSISTANT_GATEWAY_URL = config(
     "AI_ASSISTANT_GATEWAY_URL", default="http://ai-assistant-gateway:8080"
