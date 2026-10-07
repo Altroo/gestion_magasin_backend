@@ -2,6 +2,8 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.http import HttpResponse
+from django.conf import settings
+from ai_assistant.client import AiAssistantClient
 from django.utils.html import escape
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
@@ -74,7 +76,11 @@ def _number_to_french_words(number: Decimal) -> str:
         hundred, remainder = divmod(n, 100)
         if hundred == 1:
             return "cent" if remainder == 0 else f"cent {below_100(remainder)}"
-        return f"{units[hundred]} cents" if remainder == 0 else f"{units[hundred]} cent {below_100(remainder)}"
+        return (
+            f"{units[hundred]} cents"
+            if remainder == 0
+            else f"{units[hundred]} cent {below_100(remainder)}"
+        )
 
     def full(n: int) -> str:
         if n == 0:
@@ -82,10 +88,14 @@ def _number_to_french_words(number: Decimal) -> str:
         parts = []
         if n >= 1_000_000:
             millions, n = divmod(n, 1_000_000)
-            parts.append("un million" if millions == 1 else f"{below_1000(millions)} millions")
+            parts.append(
+                "un million" if millions == 1 else f"{below_1000(millions)} millions"
+            )
         if n >= 1000:
             thousands, n = divmod(n, 1000)
-            parts.append("mille" if thousands == 1 else f"{below_1000(thousands)} mille")
+            parts.append(
+                "mille" if thousands == 1 else f"{below_1000(thousands)} mille"
+            )
         if n > 0:
             parts.append(below_1000(n))
         return " ".join(parts)
@@ -110,36 +120,73 @@ def _styles():
             textColor=colors.HexColor("#1976d2"),
         )
     )
-    styles.add(ParagraphStyle(name="DocDate", parent=styles["Normal"], fontSize=9, alignment=TA_RIGHT))
-    styles.add(ParagraphStyle(name="SectionHeader", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#1976d2")))
-    styles.add(ParagraphStyle(name="Small", parent=styles["Normal"], fontSize=8, leading=10))
-    styles.add(ParagraphStyle(name="SmallCenter", parent=styles["Small"], alignment=TA_CENTER))
-    styles.add(ParagraphStyle(name="SmallRight", parent=styles["Small"], alignment=TA_RIGHT))
-    styles.add(ParagraphStyle(name="AmountWords", parent=styles["Normal"], fontSize=10, leading=13))
+    styles.add(
+        ParagraphStyle(
+            name="DocDate", parent=styles["Normal"], fontSize=9, alignment=TA_RIGHT
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="SectionHeader",
+            parent=styles["Normal"],
+            fontSize=9,
+            textColor=colors.HexColor("#1976d2"),
+        )
+    )
+    styles.add(
+        ParagraphStyle(name="Small", parent=styles["Normal"], fontSize=8, leading=10)
+    )
+    styles.add(
+        ParagraphStyle(name="SmallCenter", parent=styles["Small"], alignment=TA_CENTER)
+    )
+    styles.add(
+        ParagraphStyle(name="SmallRight", parent=styles["Small"], alignment=TA_RIGHT)
+    )
+    styles.add(
+        ParagraphStyle(
+            name="AmountWords", parent=styles["Normal"], fontSize=10, leading=13
+        )
+    )
     return styles
 
 
-def _parties_table(sale, styles, content_width):
+def _parties_table(sale, styles, content_width, tx=lambda value: value):
     issuer = sale.store
     customer = sale.customer
     left_rows = [
-        [Paragraph("<b>FACTURE CLIENT EMISE PAR</b>", styles["SectionHeader"])],
+        [
+            Paragraph(
+                f"<b>{tx('FACTURE CLIENT EMISE PAR')}</b>", styles["SectionHeader"]
+            )
+        ],
         [Paragraph(f"<b>{escape(issuer.name)}</b>", styles["Small"])],
     ]
     if issuer.address:
-        left_rows.append([Paragraph(f"Adresse: {escape(issuer.address)}", styles["Small"])])
+        left_rows.append(
+            [Paragraph(f"{tx('Adresse')}: {escape(issuer.address)}", styles["Small"])]
+        )
     if issuer.phone:
-        left_rows.append([Paragraph(f"Tel: {escape(issuer.phone)}", styles["Small"])])
+        left_rows.append(
+            [Paragraph(f"{tx('Tel')}: {escape(issuer.phone)}", styles["Small"])]
+        )
 
-    right_rows = [[Paragraph("<b>DESTINATAIRE</b>", styles["SectionHeader"])]]
+    right_rows = [[Paragraph(f"<b>{tx('DESTINATAIRE')}</b>", styles["SectionHeader"])]]
     if customer:
-        right_rows.append([Paragraph(f"<b>{escape(customer.full_name)}</b>", styles["Small"])])
+        right_rows.append(
+            [Paragraph(f"<b>{escape(customer.full_name)}</b>", styles["Small"])]
+        )
         if customer.phone:
-            right_rows.append([Paragraph(f"Tel: {escape(customer.phone)}", styles["Small"])])
+            right_rows.append(
+                [Paragraph(f"{tx('Tel')}: {escape(customer.phone)}", styles["Small"])]
+            )
         if customer.email:
-            right_rows.append([Paragraph(f"Email: {escape(customer.email)}", styles["Small"])])
+            right_rows.append(
+                [Paragraph(f"Email: {escape(customer.email)}", styles["Small"])]
+            )
     else:
-        right_rows.append([Paragraph("<b>Client comptoir</b>", styles["Small"])])
+        right_rows.append(
+            [Paragraph(f"<b>{tx('Client comptoir')}</b>", styles["Small"])]
+        )
 
     col_width = content_width / 2 - 0.25 * cm
     left = Table(left_rows, colWidths=[col_width])
@@ -161,12 +208,15 @@ def _parties_table(sale, styles, content_width):
     return table
 
 
-def _lines_table(sale, styles, content_width):
-    headers = ["Designation", "Qte", "TVA", "PRIX UNIT. HT", "Total HT"]
+def _lines_table(sale, styles, content_width, tx=lambda value: value):
+    headers = [
+        tx(value)
+        for value in ("Designation", "Qte", "TVA", "PRIX UNIT. HT", "Total HT")
+    ]
     data = [[Paragraph(f"<b>{item}</b>", styles["SmallCenter"]) for item in headers]]
 
     for line in sale.lines.select_related("product").all():
-        designation = escape(line.product.name)
+        designation = escape(tx(line.product.name))
         if line.product.reference:
             designation = f"<b>{escape(line.product.reference)}</b><br/>{designation}"
         data.append(
@@ -174,7 +224,9 @@ def _lines_table(sale, styles, content_width):
                 Paragraph(designation, styles["Small"]),
                 Paragraph(_format_number(line.quantity, 3), styles["SmallCenter"]),
                 Paragraph("0%", styles["SmallCenter"]),
-                Paragraph(f"{_format_number(line.unit_price)} MAD", styles["SmallCenter"]),
+                Paragraph(
+                    f"{_format_number(line.unit_price)} MAD", styles["SmallCenter"]
+                ),
                 Paragraph(f"{_format_number(line.total)} MAD", styles["SmallCenter"]),
             ]
         )
@@ -182,10 +234,15 @@ def _lines_table(sale, styles, content_width):
     for line in sale.promotion_lines.select_related("promotion").all():
         data.append(
             [
-                Paragraph(f"<b>Promotion</b><br/>{escape(line.promotion.name)}", styles["Small"]),
+                Paragraph(
+                    f"<b>Promotion</b><br/>{escape(tx(line.promotion.name))}",
+                    styles["Small"],
+                ),
                 Paragraph(_format_number(line.quantity, 3), styles["SmallCenter"]),
                 Paragraph("0%", styles["SmallCenter"]),
-                Paragraph(f"{_format_number(line.unit_price)} MAD", styles["SmallCenter"]),
+                Paragraph(
+                    f"{_format_number(line.unit_price)} MAD", styles["SmallCenter"]
+                ),
                 Paragraph(f"{_format_number(line.total)} MAD", styles["SmallCenter"]),
             ]
         )
@@ -205,7 +262,12 @@ def _lines_table(sale, styles, content_width):
                 ("FONTSIZE", (0, 0), (-1, 0), 9),
                 ("ALIGN", (1, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")]),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#fafafa")],
+                ),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
                 ("TOPPADDING", (0, 0), (-1, 0), 8),
                 ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
@@ -217,21 +279,32 @@ def _lines_table(sale, styles, content_width):
     return table
 
 
-def _totals_table(sale, styles):
+def _totals_table(sale, styles, tx=lambda value: value):
     rows = [
-        [Paragraph("<b>Total HT</b>", styles["Small"]), Paragraph(f"{_format_number(sale.subtotal)} MAD", styles["SmallRight"])],
+        [
+            Paragraph(f"<b>{tx('Total HT')}</b>", styles["Small"]),
+            Paragraph(f"{_format_number(sale.subtotal)} MAD", styles["SmallRight"]),
+        ],
     ]
     if sale.discount_amount:
         rows.append(
             [
-                Paragraph("<b>Remise</b>", styles["Small"]),
-                Paragraph(f"{_format_number(sale.discount_amount)} MAD", styles["SmallRight"]),
+                Paragraph(f"<b>{tx('Remise')}</b>", styles["Small"]),
+                Paragraph(
+                    f"{_format_number(sale.discount_amount)} MAD", styles["SmallRight"]
+                ),
             ]
         )
     rows.extend(
         [
-            [Paragraph("<b>TVA</b>", styles["Small"]), Paragraph("0.00 MAD", styles["SmallRight"])],
-            [Paragraph("<b>Total TTC</b>", styles["Small"]), Paragraph(f"{_format_number(sale.total)} MAD", styles["SmallRight"])],
+            [
+                Paragraph(f"<b>{tx('TVA')}</b>", styles["Small"]),
+                Paragraph("0.00 MAD", styles["SmallRight"]),
+            ],
+            [
+                Paragraph(f"<b>{tx('Total TTC')}</b>", styles["Small"]),
+                Paragraph(f"{_format_number(sale.total)} MAD", styles["SmallRight"]),
+            ],
         ]
     )
     table = Table(rows, colWidths=[5 * cm, 4 * cm])
@@ -252,7 +325,62 @@ def _totals_table(sale, styles):
     return table
 
 
-def build_sale_facture_pdf(sale):
+def build_sale_facture_pdf(sale, language="fr"):
+    translations = (
+        {
+            "FACTURE CLIENT EMISE PAR": "INVOICE ISSUED BY",
+            "DESTINATAIRE": "RECIPIENT",
+            "Client comptoir": "Walk-in customer",
+            "Designation": "Description",
+            "Qte": "Qty",
+            "TVA": "VAT",
+            "PRIX UNIT. HT": "UNIT PRICE EXCL. VAT",
+            "Total HT": "Total excl. VAT",
+            "Remise": "Discount",
+            "Total TTC": "Total incl. VAT",
+            "ARRETEE LA PRESENTE FACTURE CLIENT A LA SOMME DE": "THIS INVOICE IS SET AT THE AMOUNT OF",
+            "FACTURE CLIENT N°": "INVOICE NO.",
+            "DATE DE LA FACTURE:": "INVOICE DATE:",
+            "Adresse": "Address",
+            "Tel": "Phone",
+            "Promotion": "Promotion",
+        }
+        if language == "en"
+        else {}
+    )
+    if getattr(settings, "AI_PDF_TRANSLATION_ENABLED", False):
+        products = [line.product for line in sale.lines.select_related("product")]
+        texts = [product.name for product in products] + [
+            line.promotion.name
+            for line in sale.promotion_lines.select_related("promotion")
+        ]
+        protected = [sale.store.name] + [
+            product.reference for product in products if product.reference
+        ]
+        if sale.customer:
+            protected.append(sale.customer.full_name)
+        translations.update(
+            AiAssistantClient().translate_many(
+                texts,
+                target_language=language,
+                protected_terms=protected[:100],
+                context="sale_pdf",
+            )
+        )
+    tx = lambda value: translations.get(value, value)
+    if language == "en":
+        from num2words import num2words
+
+        whole, cents = divmod(
+            int(Decimal(sale.total).quantize(Decimal("0.01")) * 100), 100
+        )
+        amount_words = f"{num2words(whole, lang='en')} Moroccan dirhams"
+        if cents:
+            amount_words += f" and {num2words(cents, lang='en')} cents"
+        amount_words += " incl. VAT"
+    else:
+        amount_words = f"{_number_to_french_words(Decimal(sale.total))} TTC"
+
     buffer = BytesIO()
     margin = 0.7 * cm
     content_width = A4[0] - 2 * margin
@@ -264,29 +392,41 @@ def build_sale_facture_pdf(sale):
         leftMargin=margin,
         topMargin=margin,
         bottomMargin=1.3 * cm,
-        title=f"Facture vente #{sale.pk}",
+        title=f"{'Sales invoice' if language == 'en' else 'Facture vente'} #{sale.pk}",
     )
     elements = [
         Table(
             [
                 [
                     Paragraph(f"<b>{escape(sale.store.name)}</b>", styles["Small"]),
-                    Paragraph(f"<b>FACTURE CLIENT N° {sale.pk}</b>", styles["DocTitle"]),
+                    Paragraph(
+                        f"<b>{tx('FACTURE CLIENT N°')} {sale.pk}</b>",
+                        styles["DocTitle"],
+                    ),
                 ],
-                ["", Paragraph(f"DATE DE LA FACTURE: {sale.date_created:%d/%m/%Y}", styles["DocDate"])],
+                [
+                    "",
+                    Paragraph(
+                        f"{tx('DATE DE LA FACTURE:')} {sale.date_created:%d/%m/%Y}",
+                        styles["DocDate"],
+                    ),
+                ],
             ],
             colWidths=[content_width / 2, content_width / 2],
         ),
         Spacer(1, 0.35 * cm),
-        _parties_table(sale, styles, content_width),
+        _parties_table(sale, styles, content_width, tx),
         Spacer(1, 0.45 * cm),
-        _lines_table(sale, styles, content_width),
+        _lines_table(sale, styles, content_width, tx),
         Spacer(1, 0.35 * cm),
-        _totals_table(sale, styles),
+        _totals_table(sale, styles, tx),
         Spacer(1, 0.35 * cm),
-        Paragraph("<b>ARRETEE LA PRESENTE FACTURE CLIENT A LA SOMME DE</b>", styles["SectionHeader"]),
+        Paragraph(
+            f"<b>{tx('ARRETEE LA PRESENTE FACTURE CLIENT A LA SOMME DE')}</b>",
+            styles["SectionHeader"],
+        ),
         Spacer(1, 0.15 * cm),
-        Paragraph(f"{_number_to_french_words(Decimal(sale.total))} TTC", styles["AmountWords"]),
+        Paragraph(amount_words, styles["AmountWords"]),
     ]
     doc.build(elements)
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")

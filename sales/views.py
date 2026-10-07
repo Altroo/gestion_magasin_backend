@@ -248,9 +248,9 @@ def _required_quantities_from_lines(lines_data):
     required_quantities = {}
     for line_data in lines_data:
         product_id = int(line_data["product"])
-        required_quantities[product_id] = required_quantities.get(
-            product_id, Decimal("0")
-        ) + line_data["quantity"]
+        required_quantities[product_id] = (
+            required_quantities.get(product_id, Decimal("0")) + line_data["quantity"]
+        )
     return required_quantities
 
 
@@ -275,9 +275,9 @@ def _required_quantities_from_query(request):
             )
         if quantity <= 0:
             raise ValidationError({"quantities": _("La quantité doit être positive.")})
-        required_quantities[product_id] = required_quantities.get(
-            product_id, Decimal("0")
-        ) + quantity
+        required_quantities[product_id] = (
+            required_quantities.get(product_id, Decimal("0")) + quantity
+        )
     return required_quantities
 
 
@@ -286,9 +286,13 @@ def _active_products_by_id(product_ids):
         product.pk: product
         for product in Product.objects.filter(pk__in=product_ids, is_active=True)
     }
-    missing_ids = [product_id for product_id in product_ids if product_id not in products]
+    missing_ids = [
+        product_id for product_id in product_ids if product_id not in products
+    ]
     if missing_ids:
-        raise ValidationError({"product_ids": _("Certains articles sont introuvables.")})
+        raise ValidationError(
+            {"product_ids": _("Certains articles sont introuvables.")}
+        )
     return products
 
 
@@ -378,15 +382,21 @@ class PromotionListCreateView(APIView):
                 raise PermissionDenied(
                     "Seule la direction peut créer une promotion multi-magasins."
                 )
-            target_store_ids = list(dict.fromkeys(int(item) for item in target_store_ids))
-            stores = list(_promotion_target_stores_queryset().filter(pk__in=target_store_ids))
+            target_store_ids = list(
+                dict.fromkeys(int(item) for item in target_store_ids)
+            )
+            stores = list(
+                _promotion_target_stores_queryset().filter(pk__in=target_store_ids)
+            )
             if len(stores) != len(target_store_ids):
                 raise ValidationError(
                     {"stores": _("Certains magasins sont introuvables.")}
                 )
             required_quantities = _required_quantities_from_lines(data["lines"])
             eligibility = _promotion_store_eligibility(stores, required_quantities)
-            ineligible = [item["name"] for item in eligibility if not item["is_eligible"]]
+            ineligible = [
+                item["name"] for item in eligibility if not item["is_eligible"]
+            ]
             if ineligible:
                 raise ValidationError(
                     {
@@ -690,10 +700,15 @@ class SaleFacturePdfView(APIView):
     def get(request, pk, *args, **kwargs):
         sale = _get_sale_for_user(request, pk)
         if sale.sale_type != Sale.Types.WHOLESALE:
-            raise ValidationError({"sale_type": ["Seules les ventes en gros ont une facture."]})
+            raise ValidationError(
+                {"sale_type": ["Seules les ventes en gros ont une facture."]}
+            )
         if not request.user.is_staff and not getattr(request.user, "can_print", False):
             raise PermissionDenied("Vous n'avez pas les droits pour imprimer.")
-        return build_sale_facture_pdf(sale)
+        language = request.query_params.get("language", "fr")
+        if language not in ("fr", "en"):
+            raise ValidationError({"language": "Langue non prise en charge."})
+        return build_sale_facture_pdf(sale, language=language)
 
 
 class SaleDashboardView(APIView):

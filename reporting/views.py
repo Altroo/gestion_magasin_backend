@@ -7,6 +7,9 @@ from xml.sax.saxutils import escape
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse
+from django.conf import settings
+from rest_framework.exceptions import ValidationError
+from ai_assistant.client import AiAssistantClient
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -37,9 +40,7 @@ def _date_range(request, default_days=30):
 
 
 def _store_ids_for_request(request):
-    return ReportingScopeFilter(
-        request.query_params, request=request
-    ).get_store_ids()
+    return ReportingScopeFilter(request.query_params, request=request).get_store_ids()
 
 
 def _apply_store_filter(queryset, store_ids):
@@ -71,7 +72,9 @@ class StoreDashboardReportView(APIView):
         )
         sales = _apply_store_filter(sales, store_ids)
         expenses = _apply_store_filter(
-            Expense.objects.filter(expense_date__gte=date_from, expense_date__lte=date_to),
+            Expense.objects.filter(
+                expense_date__gte=date_from, expense_date__lte=date_to
+            ),
             store_ids,
         )
         purchases = Purchase.objects.filter(
@@ -168,14 +171,21 @@ class StoreDashboardReportView(APIView):
         low_stock_by_store_map = {}
         for balance in balances:
             store_name = balance.store.name
-            stock_by_store_map[store_name] = stock_by_store_map.get(store_name, 0) + balance.quantity
-            stock_value_by_store_map[store_name] = (
-                stock_value_by_store_map.get(store_name, Decimal("0"))
-                + (balance.quantity or Decimal("0")) * (balance.average_cost or Decimal("0"))
+            stock_by_store_map[store_name] = (
+                stock_by_store_map.get(store_name, 0) + balance.quantity
+            )
+            stock_value_by_store_map[store_name] = stock_value_by_store_map.get(
+                store_name, Decimal("0")
+            ) + (balance.quantity or Decimal("0")) * (
+                balance.average_cost or Decimal("0")
             )
             if balance.is_low_stock:
-                low_stock_by_store_map[store_name] = low_stock_by_store_map.get(store_name, 0) + 1
-        stock_quantity_total = sum((balance.quantity or Decimal("0")) for balance in balances)
+                low_stock_by_store_map[store_name] = (
+                    low_stock_by_store_map.get(store_name, 0) + 1
+                )
+        stock_quantity_total = sum(
+            (balance.quantity or Decimal("0")) for balance in balances
+        )
         stock_value_total = sum(
             (balance.quantity or Decimal("0")) * (balance.average_cost or Decimal("0"))
             for balance in balances
@@ -207,7 +217,12 @@ class StoreDashboardReportView(APIView):
             product_name = line.product.name
             item = margin_map.setdefault(
                 product_name,
-                {"product": product_name, "revenue": Decimal("0"), "cost": Decimal("0"), "margin": Decimal("0")},
+                {
+                    "product": product_name,
+                    "revenue": Decimal("0"),
+                    "cost": Decimal("0"),
+                    "margin": Decimal("0"),
+                },
             )
             revenue = line.total or Decimal("0")
             cost = (line.quantity or Decimal("0")) * (line.unit_cost or Decimal("0"))
@@ -248,19 +263,35 @@ class StoreDashboardReportView(APIView):
                     "attendance_delay_minutes": _sum(attendance, "delay_minutes"),
                 },
                 "sales_trend": [
-                    {"date": item["day"], "total": item["total"] or 0, "count": item["count"]}
+                    {
+                        "date": item["day"],
+                        "total": item["total"] or 0,
+                        "count": item["count"],
+                    }
                     for item in sales_trend
                 ],
                 "purchases_trend": [
-                    {"date": item["purchase_date"], "total": item["total"] or 0, "count": item["count"]}
+                    {
+                        "date": item["purchase_date"],
+                        "total": item["total"] or 0,
+                        "count": item["count"],
+                    }
                     for item in purchases_trend
                 ],
                 "expenses_trend": [
-                    {"date": item["expense_date"], "total": item["total"] or 0, "count": item["count"]}
+                    {
+                        "date": item["expense_date"],
+                        "total": item["total"] or 0,
+                        "count": item["count"],
+                    }
                     for item in expenses_trend
                 ],
                 "attendance_trend": [
-                    {"date": item["date"], "hours": item["hours"] or 0, "delay": item["delay"] or 0}
+                    {
+                        "date": item["date"],
+                        "hours": item["hours"] or 0,
+                        "delay": item["delay"] or 0,
+                    }
                     for item in attendance_trend
                 ],
                 "stock_by_store": [
@@ -269,7 +300,9 @@ class StoreDashboardReportView(APIView):
                         "quantity": quantity,
                         "value": stock_value_by_store_map.get(store, Decimal("0")),
                     }
-                    for store, quantity in sorted(stock_by_store_map.items(), key=lambda item: item[0])[:12]
+                    for store, quantity in sorted(
+                        stock_by_store_map.items(), key=lambda item: item[0]
+                    )[:12]
                 ],
                 "out_of_stock_products": [
                     {
@@ -288,19 +321,29 @@ class StoreDashboardReportView(APIView):
                 )[:12],
                 "low_stock_by_store": [
                     {"store": store, "count": count}
-                    for store, count in sorted(low_stock_by_store_map.items(), key=lambda item: item[1], reverse=True)[:12]
+                    for store, count in sorted(
+                        low_stock_by_store_map.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )[:12]
                 ],
                 "transfers_by_status": [
                     {"status": item["status"], "count": item["count"]}
-                    for item in transfers.values("status").annotate(count=Count("id")).order_by("status")
+                    for item in transfers.values("status")
+                    .annotate(count=Count("id"))
+                    .order_by("status")
                 ],
                 "inventory_by_status": [
                     {"status": item["status"], "count": item["count"]}
-                    for item in inventories.values("status").annotate(count=Count("id")).order_by("status")
+                    for item in inventories.values("status")
+                    .annotate(count=Count("id"))
+                    .order_by("status")
                 ],
                 "promotions_by_status": [
                     {"status": item["status"], "count": item["count"]}
-                    for item in promotions.values("status").annotate(count=Count("id")).order_by("status")
+                    for item in promotions.values("status")
+                    .annotate(count=Count("id"))
+                    .order_by("status")
                 ],
                 "stock_alerts": [
                     {
@@ -345,10 +388,21 @@ def _queryset_for_export(kind, request):
             ],
         )
     if kind == "stock":
-        queryset = StockBalance.objects.select_related("store", "product", "product__category")
+        queryset = StockBalance.objects.select_related(
+            "store", "product", "product__category"
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
-            ["ID", "Magasin", "Article", "Reference", "Code barre", "Famille", "Quantite", "Stock minimum"],
+            [
+                "ID",
+                "Magasin",
+                "Article",
+                "Reference",
+                "Code barre",
+                "Famille",
+                "Quantite",
+                "Stock minimum",
+            ],
             [
                 [
                     item.pk,
@@ -364,56 +418,144 @@ def _queryset_for_export(kind, request):
             ],
         )
     if kind == "attendance":
-        queryset = AttendanceRecord.objects.select_related("store", "employee").filter(date__gte=date_from, date__lte=date_to)
+        queryset = AttendanceRecord.objects.select_related("store", "employee").filter(
+            date__gte=date_from, date__lte=date_to
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
             ["ID", "Magasin", "Employe", "Date", "Statut", "Heures", "Retard"],
-            [[item.pk, item.store.name, item.employee.full_name, item.date, item.status, item.hours_worked, item.delay_minutes] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.store.name,
+                    item.employee.full_name,
+                    item.date,
+                    item.status,
+                    item.hours_worked,
+                    item.delay_minutes,
+                ]
+                for item in queryset
+            ],
         )
     if kind == "expenses":
-        queryset = Expense.objects.select_related("store", "category").filter(expense_date__gte=date_from, expense_date__lte=date_to)
+        queryset = Expense.objects.select_related("store", "category").filter(
+            expense_date__gte=date_from, expense_date__lte=date_to
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
             ["ID", "Magasin", "Date", "Poste", "Libelle", "Statut paiement", "Montant"],
-            [[item.pk, item.store.name, item.expense_date, item.category.name, item.label, item.payment_status, item.amount] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.store.name,
+                    item.expense_date,
+                    item.category.name,
+                    item.label,
+                    item.payment_status,
+                    item.amount,
+                ]
+                for item in queryset
+            ],
         )
     if kind == "purchases":
-        queryset = Purchase.objects.select_related("store").filter(purchase_date__gte=date_from, purchase_date__lte=date_to)
+        queryset = Purchase.objects.select_related("store").filter(
+            purchase_date__gte=date_from, purchase_date__lte=date_to
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
             ["ID", "Magasin", "Date", "Fournisseur", "Reference", "Statut", "Total"],
-            [[item.pk, item.store.name, item.purchase_date, item.supplier_name, item.reference, item.status, item.subtotal] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.store.name,
+                    item.purchase_date,
+                    item.supplier_name,
+                    item.reference,
+                    item.status,
+                    item.subtotal,
+                ]
+                for item in queryset
+            ],
         )
     if kind == "inventory":
-        queryset = InventorySession.objects.select_related("store").filter(inventory_date__gte=date_from, inventory_date__lte=date_to)
+        queryset = InventorySession.objects.select_related("store").filter(
+            inventory_date__gte=date_from, inventory_date__lte=date_to
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
             ["ID", "Magasin", "Date", "Code", "Titre", "Statut"],
-            [[item.pk, item.store.name, item.inventory_date, item.code, item.title, item.status] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.store.name,
+                    item.inventory_date,
+                    item.code,
+                    item.title,
+                    item.status,
+                ]
+                for item in queryset
+            ],
         )
     if kind == "movements":
-        queryset = StockMovement.objects.select_related("store", "product").filter(date_created__date__gte=date_from, date_created__date__lte=date_to)
+        queryset = StockMovement.objects.select_related("store", "product").filter(
+            date_created__date__gte=date_from, date_created__date__lte=date_to
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
             ["ID", "Magasin", "Date", "Article", "Type", "Quantite", "Solde apres"],
-            [[item.pk, item.store.name, item.date_created.date(), item.product.name, item.movement_type, item.quantity, item.balance_after] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.store.name,
+                    item.date_created.date(),
+                    item.product.name,
+                    item.movement_type,
+                    item.quantity,
+                    item.balance_after,
+                ]
+                for item in queryset
+            ],
         )
     if kind == "promotions":
-        queryset = Promotion.objects.select_related("store").filter(date_created__date__gte=date_from, date_created__date__lte=date_to)
+        queryset = Promotion.objects.select_related("store").filter(
+            date_created__date__gte=date_from, date_created__date__lte=date_to
+        )
         queryset = _apply_store_filter(queryset, store_ids)
         return (
             ["ID", "Magasin", "Nom", "Statut", "Prix vente", "Date debut", "Date fin"],
-            [[item.pk, item.store.name, item.name, item.status, item.selling_price, item.start_date or "", item.end_date or ""] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.store.name,
+                    item.name,
+                    item.status,
+                    item.selling_price,
+                    item.start_date or "",
+                    item.end_date or "",
+                ]
+                for item in queryset
+            ],
         )
     if kind == "transfers":
-        queryset = StockTransfer.objects.select_related("target_store").filter(transfer_date__gte=date_from, transfer_date__lte=date_to)
+        queryset = StockTransfer.objects.select_related("target_store").filter(
+            transfer_date__gte=date_from, transfer_date__lte=date_to
+        )
         if store_ids is not None:
             queryset = ReportingScopeFilter.apply_store_filter(
                 queryset, store_ids, field_name="target_store_id"
             )
         return (
             ["ID", "Destination", "Date", "Reference", "Statut"],
-            [[item.pk, item.target_store.name, item.transfer_date, item.reference, item.status] for item in queryset],
+            [
+                [
+                    item.pk,
+                    item.target_store.name,
+                    item.transfer_date,
+                    item.reference,
+                    item.status,
+                ]
+                for item in queryset
+            ],
         )
     return None
 
@@ -480,7 +622,9 @@ STATUS_LABELS = {
 
 
 def _pdf_store_label(request):
-    raw_store = request.query_params.get("store") or request.query_params.get("store_id")
+    raw_store = request.query_params.get("store") or request.query_params.get(
+        "store_id"
+    )
     if raw_store and str(raw_store).lower() != "all":
         try:
             return get_store_from_request(request).name
@@ -514,7 +658,10 @@ def _summary_total(headers, rows):
     total_indexes = [
         index
         for index, header in enumerate(headers)
-        if any(keyword in header.lower() for keyword in ["total", "montant", "prix vente", "heures", "quantite"])
+        if any(
+            keyword in header.lower()
+            for keyword in ["total", "montant", "prix vente", "heures", "quantite"]
+        )
     ]
     if not total_indexes:
         return None
@@ -539,9 +686,23 @@ def _column_widths(headers, available_width):
             weights.append(0.55)
         elif any(keyword in normalized for keyword in ["date", "statut", "code"]):
             weights.append(1.05)
-        elif any(keyword in normalized for keyword in ["total", "montant", "prix", "quantite", "stock", "heures", "retard"]):
+        elif any(
+            keyword in normalized
+            for keyword in [
+                "total",
+                "montant",
+                "prix",
+                "quantite",
+                "stock",
+                "heures",
+                "retard",
+            ]
+        ):
             weights.append(1.1)
-        elif any(keyword in normalized for keyword in ["article", "client", "fournisseur", "libelle", "employe"]):
+        elif any(
+            keyword in normalized
+            for keyword in ["article", "client", "fournisseur", "libelle", "employe"]
+        ):
             weights.append(1.85)
         else:
             weights.append(1.35)
@@ -563,7 +724,9 @@ def _report_footer(title):
         canvas.setFillColor(colors.HexColor("#64748b"))
         canvas.drawString(doc.leftMargin, 0.55 * cm, "E.B.H Gestion Magasin")
         canvas.drawCentredString(width / 2, 0.55 * cm, title)
-        canvas.drawRightString(width - doc.rightMargin, 0.55 * cm, f"Page {canvas.getPageNumber()}")
+        canvas.drawRightString(
+            width - doc.rightMargin, 0.55 * cm, f"Page {canvas.getPageNumber()}"
+        )
         canvas.restoreState()
 
     return _draw
@@ -574,11 +737,86 @@ def _pdf_response(kind, headers, rows, request):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import cm
-    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import (
+        KeepTogether,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
+    language = request.query_params.get("language", "fr")
+    if language not in ("fr", "en"):
+        raise ValidationError({"language": "Langue non prise en charge."})
+    prose_columns = [
+        index
+        for index, header in enumerate(headers)
+        if any(
+            word in header.lower()
+            for word in (
+                "article",
+                "produit",
+                "libelle",
+                "libellé",
+                "categorie",
+                "catégorie",
+                "statut",
+                "type",
+                "promotion",
+                "description",
+            )
+        )
+    ]
+    labels = (
+        list(REPORT_TITLES.values())
+        + list(STATUS_LABELS.values())
+        + list(headers)
+        + [
+            "Période",
+            "Magasin",
+            "Lignes",
+            "Généré le",
+            "Détail du rapport",
+            "Aucune donnée disponible pour cette période.",
+            "Affichage limité aux 500 premières lignes.",
+            "Tous les magasins",
+            "Magasin sélectionné",
+        ]
+    )
+    texts = labels + [
+        _format_pdf_value(row[index])
+        for row in rows[:500]
+        for index in prose_columns
+        if index < len(row) and isinstance(row[index], str)
+    ]
+    protected = list(
+        dict.fromkeys(
+            str(row[index])
+            for row in rows[:500]
+            for index, header in enumerate(headers)
+            if index < len(row)
+            and any(
+                word in header.lower()
+                for word in ("magasin", "client", "employe", "employé", "fournisseur")
+            )
+            and row[index]
+        )
+    )
+    translations = (
+        AiAssistantClient().translate_many(
+            texts,
+            target_language=language,
+            protected_terms=[term for term in protected if len(term) <= 200][:100],
+            context="stock_report_pdf",
+        )
+        if getattr(settings, "AI_PDF_TRANSLATION_ENABLED", False)
+        else {}
+    )
+    tx = lambda value: translations.get(value, value)
     buffer = BytesIO()
     page_size = landscape(A4)
-    title = REPORT_TITLES.get(kind, f"Rapport {kind}")
+    title = tx(REPORT_TITLES.get(kind, f"Rapport {kind}"))
     accent = colors.HexColor(REPORT_ACCENTS.get(kind, "#1d4ed8"))
     date_from, date_to = _date_range(request)
     store_label = _pdf_store_label(request)
@@ -671,16 +909,30 @@ def _pdf_response(kind, headers, rows, request):
 
     total_label_value = _summary_total(headers, rows)
     summary_cells = [
-        Paragraph(f"<b>Période</b><br/>{date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')}", styles["ReportMeta"]),
-        Paragraph(f"<b>Magasin</b><br/>{_pdf_text(store_label)}", styles["ReportMeta"]),
-        Paragraph(f"<b>Lignes</b><br/>{len(rows)}", styles["ReportMeta"]),
-        Paragraph(f"<b>Généré le</b><br/>{generated_at}", styles["ReportMeta"]),
+        Paragraph(
+            f"<b>{tx('Période')}</b><br/>{date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')}",
+            styles["ReportMeta"],
+        ),
+        Paragraph(
+            f"<b>{tx('Magasin')}</b><br/>{_pdf_text(tx(store_label))}",
+            styles["ReportMeta"],
+        ),
+        Paragraph(f"<b>{tx('Lignes')}</b><br/>{len(rows)}", styles["ReportMeta"]),
+        Paragraph(f"<b>{tx('Généré le')}</b><br/>{generated_at}", styles["ReportMeta"]),
     ]
     if total_label_value:
         label, total = total_label_value
-        summary_cells.append(Paragraph(f"<b>{_pdf_text(label)}</b><br/>{_pdf_text(_format_pdf_value(total))}", styles["ReportMeta"]))
+        summary_cells.append(
+            Paragraph(
+                f"<b>{_pdf_text(tx(label))}</b><br/>{_pdf_text(_format_pdf_value(total))}",
+                styles["ReportMeta"],
+            )
+        )
 
-    summary_table = Table([summary_cells], colWidths=[content_width / len(summary_cells)] * len(summary_cells))
+    summary_table = Table(
+        [summary_cells],
+        colWidths=[content_width / len(summary_cells)] * len(summary_cells),
+    )
     summary_table.setStyle(
         TableStyle(
             [
@@ -696,17 +948,39 @@ def _pdf_response(kind, headers, rows, request):
         )
     )
 
-    table_rows = [[Paragraph(f"<b>{_pdf_text(header)}</b>", styles["ReportHeaderCell"]) for header in headers]]
+    table_rows = [
+        [
+            Paragraph(f"<b>{_pdf_text(tx(header))}</b>", styles["ReportHeaderCell"])
+            for header in headers
+        ]
+    ]
     if rows:
         for row in rows[:500]:
             table_rows.append(
                 [
-                    Paragraph(_pdf_text(_format_pdf_value(row[index] if index < len(row) else "")), styles["ReportCell"])
+                    Paragraph(
+                        _pdf_text(
+                            tx(_format_pdf_value(row[index]))
+                            if index in prose_columns and index < len(row)
+                            else _format_pdf_value(
+                                row[index] if index < len(row) else ""
+                            )
+                        ),
+                        styles["ReportCell"],
+                    )
                     for index, _header in enumerate(headers)
                 ]
             )
     else:
-        table_rows.append([Paragraph("Aucune donnée disponible pour cette période.", styles["ReportCell"])] + [""] * (len(headers) - 1))
+        table_rows.append(
+            [
+                Paragraph(
+                    tx("Aucune donnée disponible pour cette période."),
+                    styles["ReportCell"],
+                )
+            ]
+            + [""] * (len(headers) - 1)
+        )
 
     report_table = Table(
         table_rows,
@@ -724,11 +998,27 @@ def _pdf_response(kind, headers, rows, request):
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        (
+            "ROWBACKGROUNDS",
+            (0, 1),
+            (-1, -1),
+            [colors.white, colors.HexColor("#f8fafc")],
+        ),
         ("LINEBELOW", (0, 0), (-1, 0), 1, accent),
     ]
     for index, header in enumerate(headers):
-        if any(keyword in header.lower() for keyword in ["total", "montant", "prix", "quantite", "stock", "heures", "retard"]):
+        if any(
+            keyword in header.lower()
+            for keyword in [
+                "total",
+                "montant",
+                "prix",
+                "quantite",
+                "stock",
+                "heures",
+                "retard",
+            ]
+        ):
             report_style.append(("ALIGN", (index, 1), (index, -1), "RIGHT"))
     report_table.setStyle(TableStyle(report_style))
 
@@ -740,7 +1030,7 @@ def _pdf_response(kind, headers, rows, request):
         KeepTogether(
             [
                 Paragraph(
-                    "Détail du rapport",
+                    tx("Détail du rapport"),
                     ParagraphStyle(
                         "ReportSection",
                         parent=styles["Normal"],
@@ -758,14 +1048,21 @@ def _pdf_response(kind, headers, rows, request):
         story.extend(
             [
                 Spacer(1, 0.15 * cm),
-                Paragraph("Affichage limité aux 500 premières lignes.", styles["ReportMeta"]),
+                Paragraph(
+                    tx("Affichage limité aux 500 premières lignes."),
+                    styles["ReportMeta"],
+                ),
             ]
         )
 
-    doc.build(story, onFirstPage=_report_footer(title), onLaterPages=_report_footer(title))
+    doc.build(
+        story, onFirstPage=_report_footer(title), onLaterPages=_report_footer(title)
+    )
     filename = f"{kind}.pdf"
     buffer.seek(0)
-    response = FileResponse(buffer, as_attachment=False, filename=filename, content_type="application/pdf")
+    response = FileResponse(
+        buffer, as_attachment=False, filename=filename, content_type="application/pdf"
+    )
     response["X-Content-Type-Options"] = "nosniff"
     return response
 
@@ -777,7 +1074,9 @@ class ReportExportView(APIView):
     def get(request, kind, *args, **kwargs):
         result = _queryset_for_export(kind, request)
         if result is None:
-            return Response({"detail": "Export inconnu."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Export inconnu."}, status=status.HTTP_404_NOT_FOUND
+            )
         headers, rows = result
         export_format = request.query_params.get("format", "csv").lower()
         if export_format == "pdf":
@@ -790,21 +1089,41 @@ class ActivityHistoryView(APIView):
 
     @staticmethod
     def get(request, *args, **kwargs):
-        models = [Store, Product, Category, StockBalance, StockMovement, StockTransfer, Purchase, InventorySession, Sale, Customer, Promotion, AttendanceRecord, Expense]
+        models = [
+            Store,
+            Product,
+            Category,
+            StockBalance,
+            StockMovement,
+            StockTransfer,
+            Purchase,
+            InventorySession,
+            Sale,
+            Customer,
+            Promotion,
+            AttendanceRecord,
+            Expense,
+        ]
         entries = []
         for model in models:
             manager = getattr(model, "history", None)
             if manager is None:
                 continue
-            for row in manager.select_related("history_user").order_by("-history_date")[:30]:
+            for row in manager.select_related("history_user").order_by("-history_date")[
+                :30
+            ]:
                 entries.append(
                     {
                         "model": model._meta.verbose_name,
                         "object_id": getattr(row, "id", None),
                         "history_type": row.history_type,
                         "history_date": row.history_date,
-                        "history_user": row.history_user.email if row.history_user else "",
-                        "label": str(row.instance) if hasattr(row, "instance") else str(row),
+                        "history_user": (
+                            row.history_user.email if row.history_user else ""
+                        ),
+                        "label": (
+                            str(row.instance) if hasattr(row, "instance") else str(row)
+                        ),
                     }
                 )
         entries.sort(key=lambda item: item["history_date"], reverse=True)

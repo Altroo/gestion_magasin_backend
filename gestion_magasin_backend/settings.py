@@ -21,6 +21,7 @@ CSRF_TRUSTED_ORIGINS = config(
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
+    "ai_assistant.apps.AiAssistantConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -294,3 +295,16 @@ AXES_LOCKOUT_CALLABLE = None  # Use default 403 response
 # Get real IP from X-Forwarded-For header (behind nginx proxy)
 AXES_IPWARE_PROXY_COUNT = 1
 AXES_IPWARE_PROXY_ORDER = "left-most"
+
+AI_ASSISTANT_ENABLED = config("AI_ASSISTANT_ENABLED", default=False, cast=bool)
+AI_ASSISTANT_SERVICE_NAME = "facturation"
+AI_ASSISTANT_SERVICE_SECRET = config("AI_ASSISTANT_SERVICE_SECRET", default="")
+AI_ASSISTANT_GATEWAY_URL = config(
+    "AI_ASSISTANT_GATEWAY_URL", default="http://ai-assistant-gateway:8080"
+)
+AI_ASSISTANT_TIMEOUT_SECONDS = config(
+    "AI_ASSISTANT_TIMEOUT_SECONDS", default=185, cast=int
+)
+AI_PDF_TRANSLATION_ENABLED = config(
+    "AI_PDF_TRANSLATION_ENABLED", default=AI_ASSISTANT_ENABLED, cast=bool
+)
