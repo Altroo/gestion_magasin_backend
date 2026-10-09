@@ -1,0 +1,342 @@
+[
+  {
+    "date": "2026-06-04",
+    "version": "1.0.0",
+    "title_fr": "Gestion des magasins",
+    "title_en": "Store management",
+    "changes_fr": [
+      "Gestion des articles, magasins, stocks, achats, ventes, promotions et pointages avec accès selon les rôles.",
+      "Connexion centralisée E.B.H, tableaux de bord et rapports PDF."
+    ],
+    "changes_en": [
+      "Manage products, stores, stock, purchases, sales, promotions and attendance with role-based access.",
+      "Central E.B.H sign-in, dashboards and PDF reports."
+    ]
+  },
+  {
+    "date": "2026-06-05",
+    "version": "1.1.0",
+    "title_fr": "Articles et pointage",
+    "title_en": "Products and attendance",
+    "changes_fr": [
+      "Unités des articles, contrôles des prix et codes-barres, recherche des articles en stock et guide d’import envoyé par e-mail.",
+      "Calcul des horaires de pointage et messages de validation plus précis."
+    ],
+    "changes_en": [
+      "Product units, price and barcode validation, searchable stock product selection and an import guide sent by email.",
+      "Attendance schedule calculations and clearer validation messages."
+    ]
+  },
+  {
+    "date": "2026-06-06",
+    "version": "1.2.0",
+    "title_fr": "Vue du stock par magasin",
+    "title_en": "Stock overview by store",
+    "changes_fr": [
+      "Consultation du stock par magasin, sélection multiple pour les suppressions et historique des modifications dans l’administration.",
+      "Amélioration de la saisie en caisse, du choix du paiement et des erreurs de lecture des codes-barres."
+    ],
+    "changes_en": [
+      "View stock by store, select multiple records for deletion and inspect change history in administration.",
+      "Improved checkout entry, payment selection and barcode scan errors."
+    ]
+  },
+  {
+    "date": "2026-06-08",
+    "version": "1.3.0",
+    "title_fr": "Demandes de stock et promotions",
+    "title_en": "Stock requests and promotions",
+    "changes_fr": [
+      "Demandes d’ajout de stock, rapports et préférence de notification dédiée.",
+      "Promotions MBR, filtres et export du pointage au format du modèle Excel."
+    ],
+    "changes_en": [
+      "Stock addition requests, reports and a dedicated notification preference.",
+      "MBR promotions, filters and attendance export matching the Excel template."
+    ]
+  },
+  {
+    "date": "2026-06-09",
+    "version": "1.3.1",
+    "title_fr": "Compatibilité de l’interface",
+    "title_en": "Interface compatibility",
+    "changes_fr": [
+      "Mise à jour des composants d’interface et des dépendances, correction des champs de pointage et actualisation des logos."
+    ],
+    "changes_en": [
+      "Updated interface components and dependencies, corrected attendance inputs and refreshed logos."
+    ]
+  },
+  {
+    "date": "2026-06-10",
+    "version": "1.3.2",
+    "title_fr": "Vérifications des justificatifs",
+    "title_en": "Expense attachment checks",
+    "changes_fr": [
+      "Ajout de tests pour l’accès au justificatif d’une dépense."
+    ],
+    "changes_en": [
+      "Added tests for opening an expense attachment."
+    ]
+  },
+  {
+    "date": "2026-06-12",
+    "version": "1.3.3",
+    "title_fr": "Maintenance technique",
+    "title_en": "Technical maintenance",
+    "changes_fr": [
+      "Mise à jour des dépendances et correction des tests automatisés, dont une boucle dans les tests du store."
+    ],
+    "changes_en": [
+      "Updated dependencies and corrected automated tests, including a loop in store tests."
+    ]
+  },
+  {
+    "date": "2026-06-13",
+    "version": "1.3.4",
+    "title_fr": "Documentation du projet",
+    "title_en": "Project documentation",
+    "changes_fr": [
+      "Documentation de présentation et captures du projet complétées ; reconstruction de l’application."
+    ],
+    "changes_en": [
+      "Expanded project documentation and screenshots; rebuilt the application."
+    ]
+  },
+  {
+    "date": "2026-06-18",
+    "version": "1.4.0",
+    "title_fr": "Notes sur plusieurs lignes",
+    "title_en": "Multiline notes",
+    "changes_fr": [
+      "Saisie de notes plus longues sur plusieurs lignes dans les opérations du magasin."
+    ],
+    "changes_en": [
+      "Enter longer multiline notes in store operations."
+    ]
+  },
+  {
+    "date": "2026-06-19",
+    "version": "1.4.1",
+    "title_fr": "Mise à jour technique",
+    "title_en": "Technical update",
+    "changes_fr": [
+      "Actualisation des dépendances de l’interface."
+    ],
+    "changes_en": [
+      "Updated frontend dependencies."
+    ]
+  },
+  {
+    "date": "2026-06-25",
+    "version": "1.4.2",
+    "title_fr": "Configuration des données initiales",
+    "title_en": "Initial data configuration",
+    "changes_fr": [
+      "Actualisation de l’adresse e-mail utilisée par les données initiales de démonstration."
+    ],
+    "changes_en": [
+      "Updated the email address used by initial demonstration data."
+    ]
+  },
+  {
+    "date": "2026-06-27",
+    "version": "2.0.0",
+    "title_fr": "Ventes en gros",
+    "title_en": "Wholesale sales",
+    "changes_fr": [
+      "Nouveau parcours de vente en gros avec permission dédiée, factures PDF et gestion du stock associée.",
+      "Libellés des périodes de pointage harmonisés et explication des actions désactivées."
+    ],
+    "changes_en": [
+      "New wholesale sales workflow with dedicated permission, PDF invoices and related stock handling.",
+      "Aligned attendance shift labels and explanations for disabled actions."
+    ]
+  },
+  {
+    "date": "2026-06-29",
+    "version": "2.0.1",
+    "title_fr": "Connexion et disponibilité",
+    "title_en": "Sign-in and availability",
+    "changes_fr": [
+      "Correction du routage des services et du traitement des sessions dont le jeton de renouvellement a expiré ou est invalide."
+    ],
+    "changes_en": [
+      "Corrected service routing and handling of sessions with expired or invalid refresh tokens."
+    ]
+  },
+  {
+    "date": "2026-07-09",
+    "version": "2.1.0",
+    "title_fr": "Comptes réservés au pointage",
+    "title_en": "Attendance-only accounts",
+    "changes_fr": [
+      "Type de compte limité au pointage, sélection du type d’utilisateur et autorisations correspondantes."
+    ],
+    "changes_en": [
+      "Attendance-only account type, user type selection and corresponding permissions."
+    ]
+  },
+  {
+    "date": "2026-07-11",
+    "version": "2.2.0",
+    "title_fr": "Employés et accès au pointage",
+    "title_en": "Employees and attendance access",
+    "changes_fr": [
+      "Gestion des employés du magasin, employés MBR et sélection d’un employé par défaut.",
+      "Accès aux paramètres du compte pour les utilisateurs de pointage et correction des redirections et de l’utilisation de la caméra."
+    ],
+    "changes_en": [
+      "Manage store employees, MBR employees and default employee selection.",
+      "Account settings access for attendance users and corrected redirects and camera handling."
+    ]
+  },
+  {
+    "date": "2026-07-25",
+    "version": "2.3.0",
+    "title_fr": "Suivi du stock par article",
+    "title_en": "Stock tracking per product",
+    "changes_fr": [
+      "Plusieurs lignes de suivi du stock et de péremption par article, avec sélection des dates dans le tableau."
+    ],
+    "changes_en": [
+      "Multiple stock and expiration tracking rows per product, with date selection in the grid."
+    ]
+  },
+  {
+    "date": "2026-07-29",
+    "version": "2.3.1",
+    "title_fr": "Maintenance de l’interface",
+    "title_en": "Frontend maintenance",
+    "changes_fr": [
+      "Actualisation des dépendances de l’interface."
+    ],
+    "changes_en": [
+      "Updated frontend dependencies."
+    ]
+  },
+  {
+    "date": "2026-09-01",
+    "version": "2.4.0",
+    "title_fr": "Caisse tactile et impression",
+    "title_en": "Touch checkout and printing",
+    "changes_fr": [
+      "Caisse adaptée à l’usage tactile, installation de l’imprimante sous Windows et impression des tickets avec le logo du magasin.",
+      "Fiabilisation de l’encaissement, de l’impression et de l’affichage des stocks absents comme nuls."
+    ],
+    "changes_en": [
+      "Checkout adapted for touch use, Windows printer installation and receipt printing with the store logo.",
+      "More reliable checkout, printing and zero balances for missing stock records."
+    ]
+  },
+  {
+    "date": "2026-09-02",
+    "version": "2.5.0",
+    "title_fr": "Périphériques de caisse",
+    "title_en": "Checkout peripherals",
+    "changes_fr": [
+      "Afficheur client COM2, ouverture du tiroir-caisse et commandes de la fenêtre de caisse avec confirmation de fermeture.",
+      "Correction de la réinstallation de l’imprimante et de l’accès au programme d’installation."
+    ],
+    "changes_en": [
+      "COM2 customer display, cash drawer control and checkout window actions with close confirmation.",
+      "Corrected printer reinstallation and access to the setup program."
+    ]
+  },
+  {
+    "date": "2026-09-07",
+    "version": "2.6.0",
+    "title_fr": "Image du magasin",
+    "title_en": "Store image",
+    "changes_fr": [
+      "Recadrage de l’image du magasin.",
+      "Mise à jour des dépendances, des tests et de la configuration d’envoi des e-mails."
+    ],
+    "changes_en": [
+      "Crop the store image.",
+      "Updated dependencies, tests and email delivery configuration."
+    ]
+  },
+  {
+    "date": "2026-09-17",
+    "version": "2.6.1",
+    "title_fr": "Actualisation de l’interface",
+    "title_en": "Frontend update",
+    "changes_fr": [
+      "Mise à jour des dépendances de l’interface."
+    ],
+    "changes_en": [
+      "Updated frontend dependencies."
+    ]
+  },
+  {
+    "date": "2026-09-18",
+    "version": "2.6.2",
+    "title_fr": "Maintenance des services",
+    "title_en": "Service maintenance",
+    "changes_fr": [
+      "Mise à jour des dépendances serveur et correction de la configuration des tâches en arrière-plan."
+    ],
+    "changes_en": [
+      "Updated server dependencies and corrected background task configuration."
+    ]
+  },
+  {
+    "date": "2026-09-23",
+    "version": "2.7.0",
+    "title_fr": "Retour à la page du tableau",
+    "title_en": "Return to the previous table page",
+    "changes_fr": [
+      "Conservation de la pagination des tableaux lors du retour à la liste.",
+      "Migration technique de React et Next.js et ajustement des types du tableau de stock."
+    ],
+    "changes_en": [
+      "Preserve table pagination when returning to a list.",
+      "React and Next.js technical migration and stock grid type adjustments."
+    ]
+  },
+  {
+    "date": "2026-10-06",
+    "version": "2.7.1",
+    "title_fr": "Tri des listes",
+    "title_en": "List sorting",
+    "changes_fr": [
+      "Tri des colonnes appliqué côté serveur avant la pagination pour ordonner l’ensemble des résultats.",
+      "Actualisation des dépendances."
+    ],
+    "changes_en": [
+      "Column sorting applied on the server before pagination to order the complete result set.",
+      "Updated dependencies."
+    ]
+  },
+  {
+    "date": "2026-10-07",
+    "version": "2.8.0",
+    "title_fr": "Aide à la rédaction",
+    "title_en": "Writing assistance",
+    "changes_fr": [
+      "Assistant privé pour les textes et PDF, avec aperçu des propositions avant application et accès limité aux champs de rédaction.",
+      "Isolation des quotas et des services de l’assistant, fiabilisation des reprises après erreur et des ressources de l’administration."
+    ],
+    "changes_en": [
+      "Private text and PDF assistant, with suggestions previewed before applying and controls limited to writing fields.",
+      "Isolated assistant quotas and services, more reliable error recovery and administration assets."
+    ]
+  },
+  {
+    "date": "2026-10-09",
+    "version": "2.9.0",
+    "title_fr": "Historique, mises à jour et mode sombre",
+    "title_en": "History, updates and dark mode",
+    "changes_fr": [
+      "Historique bilingue des évolutions et des versions accessible après les paramètres.",
+      "Notification des nouvelles versions avec choix de reporter ou de mettre à jour après avoir enregistré son travail.",
+      "Mode sombre mémorisé pour la navigation, les formulaires, les tableaux et les graphiques."
+    ],
+    "changes_en": [
+      "Bilingual change and version history available after Settings.",
+      "New version notification with the option to defer or update after saving your work.",
+      "Remembered dark mode for navigation, forms, tables and charts."
+    ]
+  }
+]
