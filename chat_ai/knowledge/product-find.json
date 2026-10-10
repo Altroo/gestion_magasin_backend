@@ -1,0 +1,27 @@
+{
+  "document_id": "product-find",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Retrouver un article / Find a product",
+  "content": "Dans Articles, recherchez une désignation, une référence ou un code barre. Le catalogue des articles est commun ; les quantités en stock concernent le magasin sélectionné. Dans l’assistant, décrivez l’article avec /articles ou /voir, puis choisissez le résultat.\nIn Articles, search by designation, reference or barcode. The product catalogue is shared; stock quantities refer to the selected store. In the assistant, describe the product with /products or /search and select the result.",
+  "localized_content": {
+    "fr": "Dans Articles, recherchez une désignation, une référence ou un code barre. Le catalogue des articles est commun ; les quantités en stock concernent le magasin sélectionné. Dans l’assistant, décrivez l’article avec /articles ou /voir, puis choisissez le résultat.",
+    "en": "In Articles, search by designation, reference or barcode. The product catalogue is shared; stock quantities refer to the selected store. In the assistant, describe the product with /products or /search and select the result."
+  },
+  "keywords": [
+    "article",
+    "product",
+    "barcode",
+    "code",
+    "barre",
+    "designation",
+    "search",
+    "recherche"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read_product"
+  ],
+  "tenant_scope_id": null
+}

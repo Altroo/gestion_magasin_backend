@@ -1,0 +1,25 @@
+{
+  "document_id": "stock-status",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Stock faible / Low stock",
+  "content": "Le stock faible signifie que le stock minimum effectif est supérieur à zéro et que la quantité est inférieure ou égale à ce minimum. Un minimum défini sur le stock du magasin remplace le minimum par défaut de l’article, y compris s’il vaut zéro. /stock peut rechercher les articles en stock faible du magasin actif.\nLow stock means the effective minimum is greater than zero and quantity is less than or equal to that minimum. A store stock minimum overrides the product default, including an explicit zero. /stock can find low-stock products in the active store.",
+  "localized_content": {
+    "fr": "Le stock faible signifie que le stock minimum effectif est supérieur à zéro et que la quantité est inférieure ou égale à ce minimum. Un minimum défini sur le stock du magasin remplace le minimum par défaut de l’article, y compris s’il vaut zéro. /stock peut rechercher les articles en stock faible du magasin actif.",
+    "en": "Low stock means the effective minimum is greater than zero and quantity is less than or equal to that minimum. A store stock minimum overrides the product default, including an explicit zero. /stock can find low-stock products in the active store."
+  },
+  "keywords": [
+    "stock",
+    "low",
+    "faible",
+    "seuil",
+    "minimum",
+    "alert"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read_stock"
+  ],
+  "tenant_scope_id": null
+}

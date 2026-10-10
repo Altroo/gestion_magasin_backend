@@ -184,3 +184,12 @@ cython_debug/
 .docs/*
 .github
 .github/*
+
+# Local assistant evidence and model artifacts
+.DS_Store
+test-artifacts/
+training/evaluations/
+*.safetensors
+*.gguf
+*.pem
+*.key

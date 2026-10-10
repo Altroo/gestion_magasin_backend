@@ -1,0 +1,25 @@
+{
+  "document_id": "assistant-delete",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Suppressions assistées / Assisted deletion",
+  "content": "Décrivez le document avec /supprimer puis sélectionnez le résultat. Une suppression prise en charge nécessite une confirmation précise et des autorisations encore valides. Les articles ou clients ayant des dépendances sont refusés par l’assistant. Supprimer une vente et annuler une vente avec retour de stock sont des opérations différentes ; elles ne sont pas proposées ici. Toute suppression exécutée conserve l’identité de la personne dans l’historique et le journal.\nDescribe a record with /delete and select the result. Supported deletion requires exact confirmation and still-valid permissions. The assistant rejects products or customers with dependencies. Deleting a sale and voiding it with stock restoration are different operations; neither is offered here. Every executed deletion retains the requesting user’s identity in history and audit.",
+  "localized_content": {
+    "fr": "Décrivez le document avec /supprimer puis sélectionnez le résultat. Une suppression prise en charge nécessite une confirmation précise et des autorisations encore valides. Les articles ou clients ayant des dépendances sont refusés par l’assistant. Supprimer une vente et annuler une vente avec retour de stock sont des opérations différentes ; elles ne sont pas proposées ici. Toute suppression exécutée conserve l’identité de la personne dans l’historique et le journal.",
+    "en": "Describe a record with /delete and select the result. Supported deletion requires exact confirmation and still-valid permissions. The assistant rejects products or customers with dependencies. Deleting a sale and voiding it with stock restoration are different operations; neither is offered here. Every executed deletion retains the requesting user’s identity in history and audit."
+  },
+  "keywords": [
+    "supprimer",
+    "delete",
+    "remove",
+    "confirmation",
+    "history",
+    "historique"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "delete"
+  ],
+  "tenant_scope_id": null
+}

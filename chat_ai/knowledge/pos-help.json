@@ -1,0 +1,27 @@
+{
+  "document_id": "pos-help",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Utiliser la caisse / Use checkout",
+  "content": "Dans Caisse, sélectionnez le magasin autorisé, scannez les articles, vérifiez les lignes et choisissez le mode de paiement avant de confirmer la vente. Le mode vente en gros dépend de l’autorisation correspondante et n’est pas disponible pour le rôle vendeur du magasin sélectionné. L’assistant ne confirme pas de transaction de caisse.\nIn Checkout, select the authorized store, scan products, check the lines and choose the payment mode before confirming the sale. Wholesale mode depends on its dedicated permission and is unavailable for the selected store’s vendeur role. The assistant does not confirm checkout transactions.",
+  "localized_content": {
+    "fr": "Dans Caisse, sélectionnez le magasin autorisé, scannez les articles, vérifiez les lignes et choisissez le mode de paiement avant de confirmer la vente. Le mode vente en gros dépend de l’autorisation correspondante et n’est pas disponible pour le rôle vendeur du magasin sélectionné. L’assistant ne confirme pas de transaction de caisse.",
+    "en": "In Checkout, select the authorized store, scan products, check the lines and choose the payment mode before confirming the sale. Wholesale mode depends on its dedicated permission and is unavailable for the selected store’s vendeur role. The assistant does not confirm checkout transactions."
+  },
+  "keywords": [
+    "caisse",
+    "checkout",
+    "pos",
+    "scanner",
+    "scan",
+    "barcode",
+    "ticket",
+    "receipt"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "pos_access"
+  ],
+  "tenant_scope_id": null
+}

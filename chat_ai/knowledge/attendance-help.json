@@ -1,0 +1,27 @@
+{
+  "document_id": "attendance-help",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Pointage / Attendance",
+  "content": "Le pointage affiche les dates, horaires, heures travaillées et retards calculés par l’application. La vue MBR South dispose d’un périmètre de liste particulier ; voir une ligne dans cette liste ne donne pas automatiquement le droit d’ouvrir ou de modifier son détail. Les comptes limités au pointage restent limités à ce module.\nAttendance shows dates, times, worked hours and delays calculated by the application. The MBR South list has a special scope; list visibility does not automatically grant detail or edit access. Attendance-only accounts remain restricted to that module.",
+  "localized_content": {
+    "fr": "Le pointage affiche les dates, horaires, heures travaillées et retards calculés par l’application. La vue MBR South dispose d’un périmètre de liste particulier ; voir une ligne dans cette liste ne donne pas automatiquement le droit d’ouvrir ou de modifier son détail. Les comptes limités au pointage restent limités à ce module.",
+    "en": "Attendance shows dates, times, worked hours and delays calculated by the application. The MBR South list has a special scope; list visibility does not automatically grant detail or edit access. Attendance-only accounts remain restricted to that module."
+  },
+  "keywords": [
+    "pointage",
+    "attendance",
+    "hours",
+    "heures",
+    "delay",
+    "retard",
+    "employee",
+    "employe"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read_attendance"
+  ],
+  "tenant_scope_id": null
+}

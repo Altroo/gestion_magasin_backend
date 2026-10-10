@@ -1,0 +1,27 @@
+{
+  "document_id": "sales-find",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Retrouver une vente / Find a sale",
+  "content": "Dans Ventes, recherchez un client ou un article et utilisez les filtres de date et de statut. Dans l’assistant, vous pouvez combiner un nom de client et un nom d’article. Le statut de confirmation de la vente et son statut de paiement sont deux informations différentes.\nIn Sales, search for a customer or product and use date/status filters. In the assistant, customer and product names can be combined. Sale confirmation status and payment status are different information.",
+  "localized_content": {
+    "fr": "Dans Ventes, recherchez un client ou un article et utilisez les filtres de date et de statut. Dans l’assistant, vous pouvez combiner un nom de client et un nom d’article. Le statut de confirmation de la vente et son statut de paiement sont deux informations différentes.",
+    "en": "In Sales, search for a customer or product and use date/status filters. In the assistant, customer and product names can be combined. Sale confirmation status and payment status are different information."
+  },
+  "keywords": [
+    "vente",
+    "sale",
+    "client",
+    "customer",
+    "article",
+    "product",
+    "search",
+    "recherche"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read_sale"
+  ],
+  "tenant_scope_id": null
+}

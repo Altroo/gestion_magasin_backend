@@ -1,0 +1,7 @@
+FIELD_LABELS = {'name':'Article','reference':'Référence','barcode':'Code barre','full_name':'Nom','phone':'Téléphone','email':'Email','label':'Libellé','note':'Remarque','observations':'Remarque','responsible':'Responsable','date_from':'Date de début','date_to':'Date de fin','product_name':'Article','customer_name':'Client','employee_name':'Employé','low_stock':'Stock faible','company_id':'Magasin'}
+FIELD_LABELS_EN = {'name':'Product','reference':'Reference','barcode':'Barcode','full_name':'Name','phone':'Phone','email':'Email','label':'Label','note':'Remark','observations':'Remark','responsible':'Responsible','date_from':'Start date','date_to':'End date','product_name':'Product','customer_name':'Customer','employee_name':'Employee','low_stock':'Low stock','company_id':'Store'}
+RESOURCE_LABELS = {'product':('Article','Product'),'stock':('Stock','Stock'),'sale':('Vente','Sale'),'customer':('Client','Customer'),'expense':('Dépense','Expense'),'purchase':('Achat','Purchase'),'transfer':('Transfert','Transfer'),'inventory':('Inventaire','Inventory'),'promotion':('Promotion','Promotion'),'attendance':('Pointage','Attendance'),'employee':('Employé','Employee'),'stock_request':('Demande de stock','Stock request'),'store':('Magasin','Store'),'user':('Utilisateur','User')}
+
+def selected_action_text(operation, resource, language='fr'):
+    en=language=='en'
+    return ({'edit':'Edit','delete':'Delete'} if en else {'edit':'Modifier','delete':'Supprimer'})[operation]+' · '+RESOURCE_LABELS[resource][int(en)]

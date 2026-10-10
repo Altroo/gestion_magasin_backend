@@ -52,6 +52,7 @@ handler500 = custom_500
 admin.site.site_url = settings.FRONTEND_URL or "/"
 
 urlpatterns = [
+    path("api/ai/v1/", include("chat_ai.urls")),
     path("api/ai/", include("ai_assistant.urls")),
     # Health check endpoint (unauthenticated)
     path("api/health/", health_check, name="health-check"),

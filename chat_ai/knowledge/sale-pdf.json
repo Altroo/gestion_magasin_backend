@@ -1,0 +1,29 @@
+{
+  "document_id": "sale-pdf",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Facture de vente en gros / Wholesale invoice",
+  "content": "Le PDF de facture est disponible pour les ventes en gros avec l’autorisation d’impression. Il peut être produit en français ou en anglais. Décrivez la vente avec /pdf puis choisissez le résultat autorisé. Le ticket de caisse et la facture PDF de vente en gros sont deux documents différents.\nAn invoice PDF is available for wholesale sales with print permission, in French or English. Describe the sale with /pdf and select an authorized result. A checkout receipt and a wholesale invoice PDF are different documents.",
+  "localized_content": {
+    "fr": "Le PDF de facture est disponible pour les ventes en gros avec l’autorisation d’impression. Il peut être produit en français ou en anglais. Décrivez la vente avec /pdf puis choisissez le résultat autorisé. Le ticket de caisse et la facture PDF de vente en gros sont deux documents différents.",
+    "en": "An invoice PDF is available for wholesale sales with print permission, in French or English. Describe the sale with /pdf and select an authorized result. A checkout receipt and a wholesale invoice PDF are different documents."
+  },
+  "keywords": [
+    "pdf",
+    "invoice",
+    "facture",
+    "wholesale",
+    "gros",
+    "download",
+    "telecharger",
+    "print",
+    "imprimer"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read_sale",
+    "print"
+  ],
+  "tenant_scope_id": null
+}

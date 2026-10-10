@@ -1,0 +1,24 @@
+{
+  "document_id": "assistant-scope",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Magasin actif / Active store",
+  "content": "Le magasin choisi limite la conversation. Les autorisations de votre compte et vos rôles sont vérifiés à chaque opération. Pour rechercher dans un autre magasin autorisé, choisissez-le dans l’interface ; un message ne peut pas accorder un accès. Les réponses sont en français ou en anglais, selon votre message.\nThe selected store scopes the conversation. Your account permissions and roles are checked for every operation. To search another authorized store, select it in the interface; a message cannot grant access. Replies follow your current French or English message.",
+  "localized_content": {
+    "fr": "Le magasin choisi limite la conversation. Les autorisations de votre compte et vos rôles sont vérifiés à chaque opération. Pour rechercher dans un autre magasin autorisé, choisissez-le dans l’interface ; un message ne peut pas accorder un accès. Les réponses sont en français ou en anglais, selon votre message.",
+    "en": "The selected store scopes the conversation. Your account permissions and roles are checked for every operation. To search another authorized store, select it in the interface; a message cannot grant access. Replies follow your current French or English message."
+  },
+  "keywords": [
+    "magasin",
+    "store",
+    "selection",
+    "scope",
+    "assistant"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read"
+  ],
+  "tenant_scope_id": null
+}

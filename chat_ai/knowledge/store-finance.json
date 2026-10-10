@@ -1,0 +1,31 @@
+{
+  "document_id": "store-finance",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Indicateurs du tableau de bord / Dashboard figures",
+  "content": "Le tableau de bord distingue ventes confirmées, dépenses et achats réceptionnés. Son solde est ventes moins dépenses et achats réceptionnés : ce n’est pas un bénéfice comptable. Les montants payés aujourd’hui incluent tous les modes de paiement des ventes confirmées et marquées payées aujourd’hui. La valeur de stock utilise les quantités et coûts moyens actuels, indépendamment de la période.\nThe dashboard separates confirmed sales, expenses and received purchases. Its balance is sales minus expenses and received purchases, not accounting profit. Amounts paid today include all payment modes for confirmed sales marked paid today. Stock value uses current quantities and average costs, independently of the reporting period.",
+  "localized_content": {
+    "fr": "Le tableau de bord distingue ventes confirmées, dépenses et achats réceptionnés. Son solde est ventes moins dépenses et achats réceptionnés : ce n’est pas un bénéfice comptable. Les montants payés aujourd’hui incluent tous les modes de paiement des ventes confirmées et marquées payées aujourd’hui. La valeur de stock utilise les quantités et coûts moyens actuels, indépendamment de la période.",
+    "en": "The dashboard separates confirmed sales, expenses and received purchases. Its balance is sales minus expenses and received purchases, not accounting profit. Amounts paid today include all payment modes for confirmed sales marked paid today. Stock value uses current quantities and average costs, independently of the reporting period."
+  },
+  "keywords": [
+    "bilan",
+    "dashboard",
+    "finance",
+    "sales",
+    "ventes",
+    "revenu",
+    "revenue",
+    "profit",
+    "benefice",
+    "net",
+    "cash",
+    "paye"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "financial"
+  ],
+  "tenant_scope_id": null
+}

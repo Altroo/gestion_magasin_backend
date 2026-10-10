@@ -1,0 +1,26 @@
+{
+  "document_id": "assistant-edit",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Modifications assistées / Assisted edits",
+  "content": "Décrivez le document avec /modifier, choisissez le résultat puis indiquez le champ et sa nouvelle valeur. Seuls les champs proposés par l’assistant sont modifiables. Vérifiez l’ancienne et la nouvelle valeur avant confirmation. L’historique natif et le journal de l’assistant conservent l’identité de la personne ayant demandé la modification. Les montants, quantités, statuts et relations ne sont pas modifiés par cette fonction.\nDescribe a record with /edit, select the result and specify the field and new value. Only the fields offered by the assistant are editable. Review old and new values before confirming. Native history and the assistant audit preserve the requesting user’s identity. This function does not change amounts, quantities, statuses or relationships.",
+  "localized_content": {
+    "fr": "Décrivez le document avec /modifier, choisissez le résultat puis indiquez le champ et sa nouvelle valeur. Seuls les champs proposés par l’assistant sont modifiables. Vérifiez l’ancienne et la nouvelle valeur avant confirmation. L’historique natif et le journal de l’assistant conservent l’identité de la personne ayant demandé la modification. Les montants, quantités, statuts et relations ne sont pas modifiés par cette fonction.",
+    "en": "Describe a record with /edit, select the result and specify the field and new value. Only the fields offered by the assistant are editable. Review old and new values before confirming. Native history and the assistant audit preserve the requesting user’s identity. This function does not change amounts, quantities, statuses or relationships."
+  },
+  "keywords": [
+    "modifier",
+    "edit",
+    "update",
+    "change",
+    "confirmation",
+    "history",
+    "historique"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "update"
+  ],
+  "tenant_scope_id": null
+}

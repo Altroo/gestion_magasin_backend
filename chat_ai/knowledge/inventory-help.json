@@ -1,0 +1,25 @@
+{
+  "document_id": "inventory-help",
+  "application_id": "gestion_magasin",
+  "approved": true,
+  "title": "Inventaires / Inventories",
+  "content": "Un inventaire compare les quantités attendues et les quantités comptées. La validation applique les ajustements de stock prévus par l’application. Un inventaire validé ne peut plus être modifié ni supprimé dans les opérations natives. L’assistant ne valide pas les inventaires et ne modifie pas les quantités.\nAn inventory compares expected and counted quantities. Validation applies the application’s stock adjustments. A validated inventory cannot be changed or deleted through native operations. The assistant does not validate inventories or change quantities.",
+  "localized_content": {
+    "fr": "Un inventaire compare les quantités attendues et les quantités comptées. La validation applique les ajustements de stock prévus par l’application. Un inventaire validé ne peut plus être modifié ni supprimé dans les opérations natives. L’assistant ne valide pas les inventaires et ne modifie pas les quantités.",
+    "en": "An inventory compares expected and counted quantities. Validation applies the application’s stock adjustments. A validated inventory cannot be changed or deleted through native operations. The assistant does not validate inventories or change quantities."
+  },
+  "keywords": [
+    "inventaire",
+    "inventory",
+    "validation",
+    "count",
+    "quantity",
+    "quantite"
+  ],
+  "category": "workflow",
+  "sensitivity": "member",
+  "required_capabilities": [
+    "read_inventory"
+  ],
+  "tenant_scope_id": null
+}

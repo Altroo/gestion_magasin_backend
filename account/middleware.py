@@ -4,6 +4,7 @@ from django.utils.translation import gettext as _
 
 class PointageOnlyAccessMiddleware:
     allowed_prefixes = (
+        "/api/ai/v1/",  # Adapter independently enforces attendance-only capabilities.
         "/api/pointage/",
         "/api/attendance/",
     )
