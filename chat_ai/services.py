@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 import threading
 import uuid
 from django.conf import settings
@@ -149,6 +149,42 @@ def _stored_action(result, language='fr'):
     return {} if action.get('tool')=='prepare_change' else action
 
 
+def planner_references(executor):
+    """Keep displayed ordinals only while the entire saved selection is accessible."""
+    from .resources import RESOURCES
+    state = executor.state
+    executor.state = {}
+    if (not isinstance(state, dict) or not isinstance(state.get('resource'), str)
+            or state['resource'] not in RESOURCES):
+        return {}
+    ids = state.get('ids')
+    if (not isinstance(ids, list) or not 1 <= len(ids) <= 10
+            or any(type(value) is not int or not 0 < value <= 2147483647 for value in ids)
+            or len(set(ids)) != len(ids)):
+        return {}
+    try:
+        expires_at = datetime.fromisoformat(state.get('expires_at'))
+    except (TypeError, ValueError):
+        return {}
+    now = timezone.now()
+    if expires_at.utcoffset() is None or expires_at <= now:
+        return {}
+    # Never remove just one missing record: that would change what "second" means.
+    # Native authorization errors propagate; no stale context is sent to the model.
+    if len(executor.read_records(state['resource'], ids)) != len(ids):
+        return {}
+    executor.state = {'resource': state['resource'], 'ids': list(ids),
+                      'expires_at': expires_at.astimezone(now.tzinfo).isoformat()}
+    # Inline selection stays bound to its original page and retry request.
+    # Keep these markers only after the complete saved selection is reauthorized.
+    if state.get('selected') is True and len(ids) == 1:
+        executor.state['selected'] = True
+        for key in ('selection_origin', 'selection_request_id'):
+            if key in state:
+                executor.state[key] = state[key]
+    return executor.state
+
+
 class _DeferredKnowledgeModel:
     # Reviewed excerpts need no inference connection. Legacy approved documents
     # still load the normal private provider when they require generation.
@@ -181,6 +217,9 @@ class ChatAIConversationService:
             if not created and user_message.text!=text:raise ChatAIError('INVALID_ARGUMENTS')
             context=dict(context)
             context["interface_language"]=message_language(text,context.get("interface_language","fr"))
+            executor=ChatAIToolExecutor(user_id,conv.company_id,request_id,conv.references,context,instruction=text)
+            references = planner_references(executor)
+            conv.references = references
             # Bind inline selection to its original page and retryable request.
             # A newly navigated page takes precedence; a failed turn keeps its target.
             page_hint={key:context[key] for key in ('resource','identifier') if key in context}
@@ -194,7 +233,6 @@ class ChatAIConversationService:
             elif selected:
                 for key in ('selected','selection_origin','selection_request_id'):conv.references.pop(key,None)
                 conv.save(update_fields=['references','updated_at'])
-            executor=ChatAIToolExecutor(user_id,conv.company_id,request_id,conv.references,context,instruction=text)
             # Only user utterances, not historic business output, enter planner context.
             history=list(conv.messages.filter(role='user').exclude(pk=user_message.pk).order_by('-created_at')[:4])
             trusted={'application':'gestion_magasin','today':timezone.localdate().isoformat(),
@@ -203,8 +241,9 @@ class ChatAIConversationService:
                      'interface_language':context.get('interface_language','fr'),
                      'current_resource':context.get('resource'),
                      'current_identifier':context.get('identifier'),
-                     'previous_result_type':conv.references.get('resource'),
-                     'previous_result_count':len(conv.references.get('ids',[]))}
+                     'previous_result_type':references.get('resource'),
+                     'previous_result_count':len(references.get('ids',[])),
+                     'previous_result_identifiers':references.get('ids',[])}
             greeting=greeting_action(text)
             if not greeting and (context.get('resource') or context.get('identifier')):
                 try:executor.record(context.get('resource'),context.get('identifier'))
@@ -212,7 +251,7 @@ class ChatAIConversationService:
                     if exc.code not in ('NOT_FOUND','PERMISSION_DENIED'):raise
                     context.pop('resource',None);context.pop('identifier',None)
                     trusted.update(current_resource=None,current_identifier=None)
-            forced=greeting or shortcut_action(text,executor,trusted['interface_language']) or reference_action(text,conv.references) or knowledge_action(text)
+            forced=greeting or shortcut_action(text,executor,trusted['interface_language']) or reference_action(text,references) or knowledge_action(text)
             model = _DeferredKnowledgeModel() if forced and forced['tool'] == 'knowledge' else (None if forced else get_model(trusted['interface_language']))
             result=ChatAIOrchestrator(model,registry(),executor,system_prompt=SYSTEM,tool_selector=shortlist).run(text,context=trusted,forced_action=forced,
                 history=[{'role':'user','content':m.text} for m in reversed(history)],emit=emit,cancel=cancel)

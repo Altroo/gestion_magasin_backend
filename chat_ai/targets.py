@@ -1,4 +1,5 @@
 """Proposals from the planner require a target supplied by trusted request state."""
+from chat_ai_assistant.selection_context import ordinal_target_matches
 from datetime import datetime
 import re
 import unicodedata
@@ -9,6 +10,9 @@ ALIASES = {'product':r'article|product|produit', 'sale':r'vente|sale', 'customer
 def trusted_target(resource, identifier, *, instruction, context, state, now):
     if type(identifier) is not int or identifier < 1 or not isinstance(instruction, str):
         return False
+    ordinal = ordinal_target_matches(instruction, resource, identifier, state, now, ALIASES)
+    if ordinal is not None:
+        return ordinal
     if context.get('resource') == resource and type(context.get('identifier')) is int and context['identifier'] == identifier:
         return True
     ids = state.get('ids', [])
