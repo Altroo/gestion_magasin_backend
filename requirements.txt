@@ -32,4 +32,4 @@ reportlab==5.0.1
 
 num2words==0.5.14
 
-./vendor/chat_ai_assistant-0.2.2-py3-none-any.whl
+./vendor/chat_ai_assistant-0.2.3-py3-none-any.whl
