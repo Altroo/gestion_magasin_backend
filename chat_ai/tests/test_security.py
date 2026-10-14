@@ -443,3 +443,32 @@ def test_current_only_metrics_cannot_mislabel_historical_period(scope,metric):
     today=timezone.localdate().isoformat()
     result=executor(scope,user=scope.admin).execute('financial_summary',{'metric':metric,'date_from':today,'date_to':today})
     assert result['period']=={'date_from':today,'date_to':today}
+
+
+def test_today_paid_sales_metric_uses_creation_date_and_current_status(scope):
+    from datetime import timedelta
+    from sales.models import PaymentMode
+
+    now = timezone.now()
+    card = PaymentMode.objects.create(code='demo-card', name='Demo card')
+    fixtures = [
+        (scope.a, 'confirmed', 'paid', Decimal('17.00'), now, card),
+        (scope.a, 'confirmed', 'paid', Decimal('5.00'), now, None),
+        (scope.a, 'confirmed', 'paid', Decimal('91.00'), now - timedelta(days=1), None),
+        (scope.a, 'confirmed', 'in_progress', Decimal('8.00'), now, None),
+        (scope.a, 'void', 'paid', Decimal('12.00'), now, None),
+        (scope.b, 'confirmed', 'paid', Decimal('999.00'), now, None),
+    ]
+    for store, status, payment_status, amount, created, mode in fixtures:
+        sale = Sale.objects.create(
+            store=store, status=status, payment_status=payment_status,
+            paid_amount=amount, total=amount, payment_mode=mode,
+        )
+        Sale.objects.filter(pk=sale.pk).update(date_created=created)
+    today = timezone.localdate().isoformat()
+    result = executor(scope, user=scope.admin).execute('financial_summary', {
+        'metric': 'today_cash_total', 'date_from': today, 'date_to': today,
+    })
+    assert Decimal(result['value']) == Decimal('22.00')
+    assert result['label_en'] == 'Paid amounts on sales created today'
+    assert 'Payment date is not filtered.' in result['definition_en']
