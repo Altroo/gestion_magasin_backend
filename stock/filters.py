@@ -1,6 +1,7 @@
 import django_filters
 
 from gestion_magasin_backend.filter_utils import (
+    CalendarDateFilter,
     CSVInFilter,
     ExcludeGlobalStockFilter,
     IExactCSVOrFilter,
@@ -143,10 +144,10 @@ class StockMovementFilter(QueryParamAliasMixin, django_filters.FilterSet):
     source_type = text_lookup_filter("source_type", "exact")
     source_type__icontains = text_lookup_filter("source_type", "icontains")
     source_id = django_filters.CharFilter(field_name="source_id")
-    date_created_after = django_filters.CharFilter(
+    date_created_after = CalendarDateFilter(
         field_name="date_created", lookup_expr="gte"
     )
-    date_created_before = django_filters.CharFilter(
+    date_created_before = CalendarDateFilter(
         field_name="date_created", lookup_expr="lte"
     )
     quantity = numeric_lookup_filter("quantity", "exact")

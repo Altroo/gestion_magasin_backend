@@ -1,6 +1,7 @@
 import django_filters
 
 from gestion_magasin_backend.filter_utils import (
+    CalendarDateFilter,
     BoolCSVInFilter,
     CSVInFilter,
     IntCSVInFilter,
@@ -23,10 +24,10 @@ class NotificationFilter(QueryParamAliasMixin, django_filters.FilterSet):
     product = django_filters.CharFilter(field_name="product_id")
     product_ids = IntCSVInFilter(field_name="product_id")
     object_id = django_filters.CharFilter(field_name="object_id")
-    date_created_after = django_filters.CharFilter(
+    date_created_after = CalendarDateFilter(
         field_name="date_created", lookup_expr="gte"
     )
-    date_created_before = django_filters.CharFilter(
+    date_created_before = CalendarDateFilter(
         field_name="date_created", lookup_expr="lte"
     )
     title = text_lookup_filter("title", "exact")

@@ -1,10 +1,31 @@
+from datetime import datetime, time, timedelta
+
 import django_filters
+from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
 from gestion_magasin_backend.utils import (
     parse_bool_csv_query_value,
     split_csv_query_value,
 )
+
+
+class CalendarDateFilter(django_filters.DateFilter):
+    """Compare a timestamp against complete local calendar days."""
+
+    def filter(self, qs, value):
+        if value is None:
+            return qs
+        # Use the next midnight exclusively for an upper bound. This includes
+        # the whole final day and keeps the timestamp column's index usable.
+        upper_bound = self.lookup_expr == "lte"
+        day = value + timedelta(days=1) if upper_bound else value
+        boundary = datetime.combine(day, time.min)
+        if settings.USE_TZ:
+            boundary = timezone.make_aware(boundary, timezone.get_current_timezone())
+        lookup = "lt" if upper_bound else self.lookup_expr
+        return qs.filter(**{f"{self.field_name}__{lookup}": boundary})
 
 
 TEXT_LOOKUPS = ("icontains", "istartswith", "iendswith")
