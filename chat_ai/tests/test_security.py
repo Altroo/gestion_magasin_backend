@@ -144,7 +144,7 @@ def test_pointage_mode_wins_even_with_staff_flag(scope):
 
 
 def test_mbr_south_list_does_not_authorize_foreign_detail_or_change(scope):
-    mbr=Store.objects.create(code='mbr-south',name='Demo attendance scope')
+    mbr=Store.objects.get(code='mbr-south')
     StoreMembership.objects.create(user=scope.user,store=mbr,role=scope.roles['responsable'])
     employee=Employee.objects.create(store=scope.b,full_name='Demo Foreign Employee')
     record=AttendanceRecord.objects.create(store=scope.b,employee=employee,date=date(2034,2,3),responsible='Demo Supervisor')
@@ -161,7 +161,7 @@ def test_stock_request_owner_or_direction_rule(scope):
     StockAddRequest.objects.create(store=scope.a,product=scope.product,quantity=2,requested_by=scope.reader)
     result=executor(scope).execute('search_records',{'resource':'stock_request'})
     assert [x['id'] for x in result['items']]==[own.pk]
-    StoreMembership.objects.filter(user=scope.user).update(role=scope.roles['direction'])
+    StoreMembership.objects.create(user=scope.user,store=Store.objects.get(code='mbr-south'),role=scope.roles['direction'])
     assert len(executor(scope).execute('search_records',{'resource':'stock_request'})['items'])==2
 
 

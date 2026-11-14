@@ -177,6 +177,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "id",
             "store",
             "store_name",
+            "stock_store",
             "seller",
             "seller_email",
             "customer",
@@ -203,8 +204,11 @@ class SaleSerializer(serializers.ModelSerializer):
             "promotion_lines",
         ]
         read_only_fields = [
+            "store",
             "seller",
             "status",
+            "stock_store",
+            "sale_type",
             "subtotal",
             "total",
             "change_amount",

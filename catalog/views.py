@@ -23,6 +23,7 @@ from store.permissions import (
     MANAGEMENT_ROLES,
     get_global_stock_store_from_request,
     get_store_from_request,
+    user_has_store_role,
     user_store_ids,
 )
 
@@ -68,9 +69,7 @@ def _product_queryset(request):
 
 
 def _ensure_product_management_access(request):
-    if request.user.is_staff:
-        return
-    get_store_from_request(request, roles=MANAGEMENT_ROLES)
+    return get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
 
 
 def _product_serializer_context(request):
@@ -101,6 +100,7 @@ class CategoryListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
+        _ensure_product_management_access(request)
         serializer = CategorySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         category = serializer.save()
@@ -125,6 +125,7 @@ class CategoryDetailEditDeleteView(APIView):
         )
 
     def put(self, request, pk, *args, **kwargs):
+        _ensure_product_management_access(request)
         category = self.get_object(pk)
         serializer = CategorySerializer(category, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -132,6 +133,7 @@ class CategoryDetailEditDeleteView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk, *args, **kwargs):
+        _ensure_product_management_access(request)
         category = self.get_object(pk)
         serializer = CategorySerializer(category, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -139,6 +141,7 @@ class CategoryDetailEditDeleteView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, *args, **kwargs):
+        _ensure_product_management_access(request)
         self.get_object(pk).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -152,6 +155,7 @@ class ProductUnitListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
+        _ensure_product_management_access(request)
         serializer = ProductUnitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         unit = serializer.save()
@@ -176,6 +180,7 @@ class ProductUnitDetailEditDeleteView(APIView):
         )
 
     def put(self, request, pk, *args, **kwargs):
+        _ensure_product_management_access(request)
         unit = self.get_object(pk)
         serializer = ProductUnitSerializer(unit, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -183,6 +188,7 @@ class ProductUnitDetailEditDeleteView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk, *args, **kwargs):
+        _ensure_product_management_access(request)
         unit = self.get_object(pk)
         serializer = ProductUnitSerializer(unit, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -190,6 +196,7 @@ class ProductUnitDetailEditDeleteView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, *args, **kwargs):
+        _ensure_product_management_access(request)
         self.get_object(pk).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -276,6 +283,17 @@ class ProductScanView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         store = get_store_from_request(request)
+        if request.query_params.get("sale_type") == "wholesale":
+            if not (
+                request.user.is_staff
+                or (
+                    getattr(request.user, "can_wholesale_sale", False)
+                    and user_has_store_role(request.user, store.pk, "direction")
+                )
+            ):
+                raise PermissionDenied("Vente en gros réservée à la direction.")
+            from store.models import Store
+            store = Store.objects.get(code="mbr-south", is_global_stock=True, is_active=True)
         product = (
             Product.objects.select_related("category")
             .filter(Q(barcode=code) | Q(reference=code), is_active=True)

@@ -150,6 +150,10 @@ class Sale(models.Model):
         related_name="sales",
         verbose_name=_("Magasin"),
     )
+    stock_store = models.ForeignKey(
+        "store.Store", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="sales_using_stock", verbose_name=_("Source du stock"),
+    )
     seller = models.ForeignKey(
         "accounts.CustomUser",
         on_delete=models.SET_NULL,

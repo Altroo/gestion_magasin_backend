@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from gestion_magasin_backend.utils import CustomPagination
 from store.filters import StoreFilter, StoreMembershipFilter
 from store.models import Role, Store, StoreMembership
-from store.permissions import user_store_ids
+from store.permissions import MANAGEMENT_ROLES, user_has_store_role, user_store_ids
 from store.serializers import (
     RoleSerializer,
     StoreDetailSerializer,
@@ -73,7 +73,12 @@ def _filtered_stores_for_user(request):
         "name"
     ).exclude(Q(is_global_stock=True) | Q(code="mbr-south"))
     if not request.user.is_staff:
-        queryset = queryset.filter(id__in=user_store_ids(request.user))
+        central = Store.objects.filter(code="mbr-south", is_global_stock=True, is_active=True).first()
+        central_manager = bool(
+            central and any(user_has_store_role(request.user, central.pk, role) for role in MANAGEMENT_ROLES)
+        )
+        if not central_manager:
+            queryset = queryset.filter(id__in=user_store_ids(request.user))
     return StoreFilter(request.query_params, queryset=queryset).qs
 
 

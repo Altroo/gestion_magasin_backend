@@ -14,6 +14,7 @@ from sales.models import (
 )
 from sales.serializers import resolve_product, resolve_promotion
 from stock.services import apply_return_stock, apply_sale_stock
+from store.models import Store
 
 
 def _decimal(value) -> Decimal:
@@ -56,6 +57,13 @@ def create_sale(*, store, user, validated_data) -> Sale:
 
     payment_mode = _payment_mode(validated_data)
     sale_type = validated_data.get("sale_type") or Sale.Types.NORMAL
+    stock_store = store
+    if sale_type == Sale.Types.WHOLESALE:
+        stock_store = Store.objects.filter(
+            code="mbr-south", is_global_stock=True, is_active=True,
+        ).first()
+        if stock_store is None:
+            raise ValidationError({"store": ["Le stock MBR SOUTH n'est pas configuré."]})
     lines_payload = validated_data.get("lines") or []
     promotion_lines_payload = validated_data.get("promotion_lines") or []
     prepared_lines = []
@@ -108,6 +116,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
 
     sale = Sale.objects.create(
         store=store,
+        stock_store=stock_store,
         seller=user if getattr(user, "is_authenticated", False) else None,
         customer=customer,
         payment_mode=payment_mode,
@@ -126,7 +135,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
     for item in prepared_lines:
         SaleLine.objects.create(sale=sale, **item)
         apply_sale_stock(
-            store=store,
+            store=stock_store,
             product=item["product"],
             quantity=item["quantity"],
             user=user,
@@ -136,7 +145,7 @@ def create_sale(*, store, user, validated_data) -> Sale:
         SalePromotionLine.objects.create(sale=sale, **item)
         for component in item["promotion"].lines.select_related("product"):
             apply_sale_stock(
-                store=store,
+                store=stock_store,
                 product=component.product,
                 quantity=component.quantity * item["quantity"],
                 user=user,
@@ -166,7 +175,7 @@ def void_sale(*, sale: Sale, user, reason: str = "") -> Sale:
     sale.save(update_fields=["status", "void_reason", "voided_by", "voided_at", "date_updated"])
     for line in sale.lines.select_related("product"):
         apply_return_stock(
-            store=sale.store,
+            store=sale.stock_store or sale.store,
             product=line.product,
             quantity=line.quantity,
             user=user,
@@ -178,7 +187,7 @@ def void_sale(*, sale: Sale, user, reason: str = "") -> Sale:
     ):
         for component in line.promotion.lines.all():
             apply_return_stock(
-                store=sale.store,
+                store=sale.stock_store or sale.store,
                 product=component.product,
                 quantity=component.quantity * line.quantity,
                 user=user,

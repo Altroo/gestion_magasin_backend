@@ -3,7 +3,6 @@ import json
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
 from django.http import Http404
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -63,6 +62,7 @@ from store.permissions import (
     get_global_stock_store_from_request,
     get_store_from_request,
     user_has_store_access,
+    user_has_store_role,
     user_store_ids,
 )
 
@@ -110,18 +110,19 @@ def _ensure_balance_management_access(user, balance):
 
 
 def _ensure_store_management_access(user, store_id):
-    if not user_has_store_access(user, store_id, roles=MANAGEMENT_ROLES):
+    if not any(user_has_store_role(user, store_id, role) for role in MANAGEMENT_ROLES):
         raise PermissionDenied("Rôle insuffisant pour ce magasin.")
 
 
 def _ensure_global_stock_store(store):
-    if not store.is_global_stock:
-        raise PermissionDenied("Les entrées de stock doivent utiliser MBR Stock.")
+    if store.code != "mbr-south" or not store.is_global_stock:
+        raise PermissionDenied("Les entrées de stock doivent utiliser MBR SOUTH.")
 
 
 def _ensure_stock_approval_access(user, store_id):
-    if not user_has_store_access(user, store_id, roles={Role.Codes.DIRECTION}):
-        raise PermissionDenied("Seule la direction peut valider les demandes d'ajout de stock.")
+    central = Store.objects.filter(code="mbr-south", is_global_stock=True, is_active=True).first()
+    if not central or not user_has_store_role(user, central.pk, Role.Codes.DIRECTION):
+        raise PermissionDenied("Seule la direction de MBR SOUTH peut valider les demandes de stock.")
 
 
 def _stock_add_request_queryset(request):
@@ -132,12 +133,13 @@ def _stock_add_request_queryset(request):
         "reviewed_by",
     )
     if not request.user.is_staff:
-        direction_store_ids = set(user_store_ids(request.user, roles={Role.Codes.DIRECTION}))
-        allowed_store_ids = set(user_store_ids(request.user))
-        queryset = queryset.filter(
-            Q(store_id__in=direction_store_ids)
-            | Q(store_id__in=allowed_store_ids, requested_by=request.user)
+        central = Store.objects.filter(code="mbr-south", is_global_stock=True, is_active=True).first()
+        central_direction = bool(
+            central and user_has_store_role(request.user, central.pk, Role.Codes.DIRECTION)
         )
+        allowed_store_ids = set(user_store_ids(request.user))
+        if not central_direction:
+            queryset = queryset.filter(store_id__in=allowed_store_ids, requested_by=request.user)
 
     return StockAddRequestFilter(request.query_params, queryset=queryset).qs
 
@@ -150,7 +152,7 @@ def _get_stock_add_request_for_user(request, pk):
 
 
 def _stock_add_request_recipients(stock_request):
-    member_ids = stock_request.store.memberships.filter(
+    member_ids = Store.objects.get(code="mbr-south").memberships.filter(
         is_active=True,
         role__code=Role.Codes.DIRECTION,
         user__is_active=True,
@@ -192,8 +194,6 @@ def _target_store_for_transfer(request, store_id):
         raise ValidationError(
             {"target_store": ["Magasin destination invalide."]}
         ) from exc
-    if not user_has_store_access(request.user, store.pk, roles=MANAGEMENT_ROLES):
-        raise PermissionDenied("Rôle insuffisant pour ce magasin.")
     return store
 
 
@@ -235,6 +235,7 @@ class StockBalanceDetailEditDeleteView(APIView):
         serializer = StockBalanceSerializer(balance, data=request.data)
         serializer.is_valid(raise_exception=True)
         next_store = serializer.validated_data.get("store", balance.store)
+        _ensure_global_stock_store(balance.store)
         _ensure_global_stock_store(next_store)
         if not user_has_store_access(
             request.user, next_store.pk, roles=MANAGEMENT_ROLES
@@ -249,8 +250,8 @@ class StockBalanceDetailEditDeleteView(APIView):
         serializer = StockBalanceSerializer(balance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         next_store = serializer.validated_data.get("store", balance.store)
-        if set(request.data.keys()) - {"min_stock"}:
-            _ensure_global_stock_store(next_store)
+        _ensure_global_stock_store(balance.store)
+        _ensure_global_stock_store(next_store)
         if not user_has_store_access(
             request.user, next_store.pk, roles=MANAGEMENT_ROLES
         ):
@@ -261,6 +262,7 @@ class StockBalanceDetailEditDeleteView(APIView):
     def delete(self, request, pk, *args, **kwargs):
         balance = _get_stock_balance_for_user(request, pk)
         _ensure_balance_management_access(request.user, balance)
+        _ensure_global_stock_store(balance.store)
         balance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -271,6 +273,7 @@ class StockAdjustmentView(APIView):
     @staticmethod
     def post(request, *args, **kwargs):
         store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
+        _ensure_global_stock_store(store)
         _ensure_stock_approval_access(request.user, store.pk)
         serializer = StockAdjustmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -304,6 +307,10 @@ class StockAddRequestListCreateView(APIView):
     @staticmethod
     def post(request, *args, **kwargs):
         store = get_store_from_request(request, roles=WRITE_ROLES)
+        if getattr(request.user, "pointage_only", False):
+            raise PermissionDenied("Accès aux demandes de stock refusé.")
+        if store.is_global_stock:
+            raise ValidationError({"store": ["Choisissez un magasin destinataire."]})
         serializer = StockAddRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         product = Product.objects.filter(
@@ -350,13 +357,27 @@ class StockAddRequestApproveView(APIView):
 def _approve_stock_add_request(stock_request, user):
     if stock_request.status != StockAddRequest.Statuses.PENDING:
         raise ValidationError({"status": ["Cette demande est déjà traitée."]})
+    source = Store.objects.get(code="mbr-south", is_global_stock=True, is_active=True)
+    source_cost = StockBalance.objects.filter(
+        store=source, product=stock_request.product
+    ).values_list("average_cost", flat=True).first()
+    apply_stock_movement(
+        store=source,
+        product=stock_request.product,
+        quantity=-stock_request.quantity,
+        movement_type=StockMovement.Types.TRANSFER_OUT,
+        user=user,
+        source_type="stock_add_request",
+        source_id=stock_request.pk,
+        note=stock_request.note,
+    )
     apply_stock_movement(
         store=stock_request.store,
         product=stock_request.product,
         quantity=stock_request.quantity,
-        movement_type=StockMovement.Types.PURCHASE,
+        movement_type=StockMovement.Types.TRANSFER_IN,
         user=user,
-        unit_cost=stock_request.unit_cost,
+        unit_cost=source_cost,
         source_type="stock_add_request",
         source_id=stock_request.pk,
         note=stock_request.note,
@@ -418,6 +439,7 @@ class StockThresholdUpdateView(APIView):
     def patch(request, pk, *args, **kwargs):
         balance = _get_stock_balance_for_user(request, pk)
         _ensure_balance_management_access(request.user, balance)
+        _ensure_global_stock_store(balance.store)
         serializer = StockThresholdSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         balance.min_stock = serializer.validated_data["min_stock"]
@@ -438,7 +460,7 @@ class BulkDeleteStockBalancesView(APIView):
         except (TypeError, ValueError):
             raise ValidationError({"ids": "Les identifiants doivent être des entiers."})
 
-        queryset = StockBalance.objects.filter(pk__in=balance_ids)
+        queryset = StockBalance.objects.filter(pk__in=balance_ids, store__code="mbr-south", store__is_global_stock=True)
         if not request.user.is_staff:
             queryset = queryset.filter(
                 store_id__in=user_store_ids(request.user, roles=MANAGEMENT_ROLES)
@@ -487,8 +509,9 @@ def _stock_transfer_queryset(request):
         "validated_by",
     ).prefetch_related("lines", "lines__product")
     if not request.user.is_staff:
-        allowed_ids = user_store_ids(request.user)
-        queryset = queryset.filter(target_store_id__in=allowed_ids)
+        central = Store.objects.filter(code="mbr-south", is_global_stock=True, is_active=True).first()
+        if not central or not any(user_has_store_role(request.user, central.pk, role) for role in MANAGEMENT_ROLES):
+            queryset = queryset.filter(target_store_id__in=user_store_ids(request.user))
     return StockTransferFilter(request.query_params, queryset=queryset).qs
 
 
@@ -728,7 +751,7 @@ class PurchaseListCreateView(APIView):
     def post(request, *args, **kwargs):
         serializer = PurchaseCreateSerializer(data=_data_with_json_lines(request))
         serializer.is_valid(raise_exception=True)
-        store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
+        store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         purchase = _create_purchase_from_validated_data(
             store=store,
             user=request.user,
@@ -759,7 +782,7 @@ class PurchaseDetailEditDeleteView(APIView):
         serializer = PurchaseCreateSerializer(data=_data_with_json_lines(request))
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            next_store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
+            next_store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
             purchase.lines.all().delete()
             data = dict(serializer.validated_data)
             lines_data = data.pop("lines")
@@ -902,7 +925,7 @@ class InventorySessionListCreateView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
-        store = get_store_from_request(request, roles=MANAGEMENT_ROLES)
+        store = get_global_stock_store_from_request(request, roles=MANAGEMENT_ROLES)
         serializer = InventorySessionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         session = _create_inventory_from_validated_data(
@@ -927,6 +950,7 @@ class InventorySessionDetailEditDeleteView(APIView):
     def put(self, request, pk, *args, **kwargs):
         session = _get_inventory_for_user(request, pk)
         _ensure_store_management_access(request.user, session.store_id)
+        _ensure_global_stock_store(session.store)
         if session.status == InventorySession.Statuses.VALIDATED:
             raise ValidationError(
                 {"status": ["Un inventaire validé ne peut plus être modifié."]}

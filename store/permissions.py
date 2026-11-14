@@ -51,6 +51,17 @@ def user_has_store_access(user, store_id: int, roles: Iterable[str] | None = Non
     return qs.exists()
 
 
+def user_has_store_role(user, store_id: int, role: str) -> bool:
+    if not user or not user.is_authenticated or getattr(user, "pointage_only", False):
+        return False
+    if user.is_staff:
+        return Store.objects.filter(pk=store_id, is_active=True).exists()
+    return StoreMembership.objects.filter(
+        user=user, store_id=store_id, role__code=role,
+        is_active=True, store__is_active=True,
+    ).exists()
+
+
 def get_store_from_request(request, roles: Iterable[str] | None = None) -> Store:
     raw_store_id = (
         request.query_params.get("store")
@@ -92,6 +103,8 @@ def get_global_stock_store_from_request(
     request,
     roles: Iterable[str] | None = None,
 ) -> Store:
+    if getattr(request.user, "pointage_only", False) and not request.user.is_staff:
+        raise PermissionDenied(_("Accès au stock MBR SOUTH refusé."))
     raw_store_id = (
         request.query_params.get("store")
         or request.query_params.get("store_id")
@@ -101,11 +114,11 @@ def get_global_stock_store_from_request(
 
     if raw_store_id:
         store = get_store_from_request(request, roles=roles)
-        if not store.is_global_stock:
-            raise PermissionDenied(_("Les entrées de stock doivent utiliser MBR Stock."))
+        if store.code != "mbr-south" or not store.is_global_stock:
+            raise PermissionDenied(_("Les entrées de stock doivent utiliser MBR SOUTH."))
         return store
 
-    store = Store.objects.filter(is_global_stock=True, is_active=True).first()
+    store = Store.objects.filter(code="mbr-south", is_global_stock=True, is_active=True).first()
     if not store:
         raise PermissionDenied(_("Le stock MBR n'est pas configuré."))
     if not user_has_store_access(request.user, store.pk, roles=roles):

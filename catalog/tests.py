@@ -29,9 +29,7 @@ def create_store_setup(role_code=Role.Codes.RESPONSABLE):
         code=role_code,
         defaults={"name": role_code.title(), "rank": 1},
     )
-    store = Store.objects.create(
-        code="catalog-store", name="CATALOG STORE", is_active=True
-    )
+    store = Store.objects.get(code="mbr-south")
     StoreMembership.objects.create(user=user, store=store, role=role)
     category = Category.objects.create(code="catalog-family", name="Catalogue Famille")
     return user, store, category

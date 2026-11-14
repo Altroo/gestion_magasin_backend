@@ -36,12 +36,12 @@ def create_store_setup(role_code=Role.Codes.RESPONSABLE, is_global_stock=False):
         code=role_code,
         defaults={"name": role_code.title(), "rank": 1},
     )
-    store = Store.objects.create(
-        code=f"stock-store-{is_global_stock}",
-        name=f"STOCK STORE {is_global_stock}",
-        is_active=True,
-        is_global_stock=is_global_stock,
-    )
+    if is_global_stock:
+        store = Store.objects.get(code="mbr-south")
+    else:
+        store = Store.objects.create(
+            code="stock-store-local", name="STOCK STORE LOCAL", is_active=True,
+        )
     StoreMembership.objects.create(user=user, store=store, role=role)
     category = Category.objects.create(code="stock-family", name="Stock Famille")
     return user, store, category
@@ -193,7 +193,7 @@ def test_stock_threshold_update_requires_management_role():
     assert balance.min_stock == Decimal("2.000")
 
 
-def test_stock_threshold_update_for_responsable():
+def test_store_cannot_update_stock_threshold_directly():
     user, store, category = create_store_setup()
     balance = create_balance(
         store, category, "STK-EDIT", "Article edit", "5.000", "2.000"
@@ -206,12 +206,12 @@ def test_stock_threshold_update_for_responsable():
         format="json",
     )
 
-    assert response.status_code == status.HTTP_200_OK
+    assert response.status_code == status.HTTP_403_FORBIDDEN
     balance.refresh_from_db()
-    assert balance.min_stock == Decimal("7.000")
+    assert balance.min_stock == Decimal("2.000")
 
 
-def test_stock_bulk_delete_removes_selected_balance_for_responsable():
+def test_store_cannot_bulk_delete_allocated_stock():
     user, store, category = create_store_setup()
     balance = create_balance(
         store, category, "STK-BULK", "Article bulk", "5.000", "2.000"
@@ -224,11 +224,11 @@ def test_stock_bulk_delete_removes_selected_balance_for_responsable():
         format="json",
     )
 
-    assert response.status_code == status.HTTP_200_OK
-    assert not StockBalance.objects.filter(pk=balance.pk).exists()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert StockBalance.objects.filter(pk=balance.pk).exists()
 
 
-def test_stock_adjustment_adds_stock_for_direction_store():
+def test_direction_cannot_adjust_store_stock_directly():
     user, store, category = create_store_setup(
         role_code=Role.Codes.DIRECTION, is_global_stock=False
     )
@@ -249,15 +249,15 @@ def test_stock_adjustment_adds_stock_for_direction_store():
         format="json",
     )
 
-    assert response.status_code == status.HTTP_201_CREATED, response.data
+    assert response.status_code == status.HTTP_403_FORBIDDEN
     balance.refresh_from_db()
-    assert balance.quantity == Decimal("55.000")
+    assert balance.quantity == Decimal("5.000")
     assert StockMovement.objects.filter(
         store=store,
         product=balance.product,
         movement_type=StockMovement.Types.ADJUSTMENT,
         quantity=Decimal("50.000"),
-    ).exists()
+    ).exists() is False
 
 
 def test_responsable_requests_stock_addition_and_direction_approves_it(django_capture_on_commit_callbacks):
@@ -269,9 +269,13 @@ def test_responsable_requests_stock_addition_and_direction_approves_it(django_ca
         code=Role.Codes.DIRECTION,
         defaults={"name": "Direction", "rank": 10},
     )
-    StoreMembership.objects.create(user=direction, store=store, role=direction_role)
+    central = Store.objects.get(code="mbr-south")
+    StoreMembership.objects.create(user=direction, store=central, role=direction_role)
     balance = create_balance(
         store, category, "STK-REQ", "Article demande", "5.000", "2.000"
+    )
+    central_balance = StockBalance.objects.create(
+        store=central, product=balance.product, quantity=Decimal("20.000")
     )
 
     client = authenticated_client(user)
@@ -313,10 +317,16 @@ def test_responsable_requests_stock_addition_and_direction_approves_it(django_ca
     assert StockMovement.objects.filter(
         store=store,
         product=balance.product,
-        movement_type=StockMovement.Types.PURCHASE,
+        movement_type=StockMovement.Types.TRANSFER_IN,
         quantity=Decimal("10.000"),
         source_type="stock_add_request",
         source_id=stock_request.pk,
+    ).exists()
+    central_balance.refresh_from_db()
+    assert central_balance.quantity == Decimal("10.000")
+    assert StockMovement.objects.filter(
+        store=central, source_type="stock_add_request", source_id=stock_request.pk,
+        movement_type=StockMovement.Types.TRANSFER_OUT,
     ).exists()
 
 
@@ -329,9 +339,13 @@ def test_direction_bulk_approves_stock_add_requests():
         code=Role.Codes.DIRECTION,
         defaults={"name": "Direction", "rank": 10},
     )
-    StoreMembership.objects.create(user=direction, store=store, role=direction_role)
+    central = Store.objects.get(code="mbr-south")
+    StoreMembership.objects.create(user=direction, store=central, role=direction_role)
     balance = create_balance(
         store, category, "STK-REQ-BULK", "Article demande bulk", "5.000", "2.000"
+    )
+    central_balance = StockBalance.objects.create(
+        store=central, product=balance.product, quantity=Decimal("20.000")
     )
     requests = [
         StockAddRequest.objects.create(
@@ -360,7 +374,31 @@ def test_direction_bulk_approves_stock_add_requests():
     assert response.data["approved"] == 2
     balance.refresh_from_db()
     assert balance.quantity == Decimal("15.000")
+    central_balance.refresh_from_db()
+    assert central_balance.quantity == Decimal("10.000")
     assert StockAddRequest.objects.filter(status=StockAddRequest.Statuses.APPROVED).count() == 2
+
+
+def test_stock_request_remains_pending_when_mbr_south_lacks_stock():
+    user, store, category = create_store_setup()
+    direction = User.objects.create_user(email="stock-insufficient@example.com", password="securepass123")
+    role = Role.objects.get(code=Role.Codes.DIRECTION)
+    StoreMembership.objects.create(user=direction, store=Store.objects.get(code="mbr-south"), role=role)
+    balance = create_balance(store, category, "STK-NO-CENTRAL", "Article sans stock central", "2.000", "1.000")
+    stock_request = StockAddRequest.objects.create(
+        store=store, product=balance.product, requested_by=user, quantity=Decimal("3.000")
+    )
+
+    response = authenticated_client(direction).post(
+        f"/api/stock/add-requests/{stock_request.pk}/approve/", format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    stock_request.refresh_from_db()
+    balance.refresh_from_db()
+    assert stock_request.status == StockAddRequest.Statuses.PENDING
+    assert balance.quantity == Decimal("2.000")
+    assert StockMovement.objects.filter(source_type="stock_add_request", source_id=stock_request.pk).count() == 0
 
 
 def test_stock_add_request_respects_direction_notification_preference(django_capture_on_commit_callbacks):
@@ -372,7 +410,7 @@ def test_stock_add_request_respects_direction_notification_preference(django_cap
         code=Role.Codes.DIRECTION,
         defaults={"name": "Direction", "rank": 10},
     )
-    StoreMembership.objects.create(user=direction, store=store, role=direction_role)
+    StoreMembership.objects.create(user=direction, store=Store.objects.get(code="mbr-south"), role=direction_role)
     preference, _ = NotificationPreference.objects.get_or_create(user=direction)
     preference.notify_stock_add_requests = False
     preference.save(update_fields=["notify_stock_add_requests", "date_updated"])
@@ -468,7 +506,7 @@ def test_purchase_create_accepts_invoice_file_with_json_lines():
     assert response.data["invoice_file_url"]
 
 
-def test_purchase_list_filters_by_store_and_supplier_name():
+def test_stores_cannot_create_local_purchases():
     user, first_store, category = create_store_setup()
     second_store = Store.objects.create(
         code="stock-purchase-second",
@@ -521,20 +559,9 @@ def test_purchase_list_filters_by_store_and_supplier_name():
         },
         format="json",
     )
-    assert first_response.status_code == status.HTTP_201_CREATED, first_response.data
-    assert second_response.status_code == status.HTTP_201_CREATED, second_response.data
-
-    response = client.get(
-        "/api/stock/purchases/",
-        {
-            "store_ids": str(second_store.pk),
-            "supplier_names": "Fournisseur Beta",
-        },
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.data
-    assert response.data["count"] == 1
-    assert response.data["results"][0]["id"] == second_response.data["id"]
+    assert first_response.status_code == status.HTTP_403_FORBIDDEN
+    assert second_response.status_code == status.HTTP_403_FORBIDDEN
+    assert Purchase.objects.count() == 0
 
 
 def test_validated_transfer_moves_stock_from_mbr_to_store():
@@ -591,7 +618,7 @@ def test_validated_transfer_moves_stock_from_mbr_to_store():
 
 
 def test_validated_inventory_adjusts_stock_to_counted_quantity():
-    user, store, category = create_store_setup()
+    user, store, category = create_store_setup(is_global_stock=True)
     balance = create_balance(
         store, category, "INV-001", "Article inventaire", "8.000", "1.000"
     )
@@ -630,7 +657,7 @@ def test_validated_inventory_adjusts_stock_to_counted_quantity():
 
 
 def test_draft_inventory_can_be_edited_before_validation():
-    user, store, category = create_store_setup()
+    user, store, category = create_store_setup(is_global_stock=True)
     balance = create_balance(
         store, category, "INV-EDIT", "Article inventaire edit", "8.000", "1.000"
     )
@@ -684,7 +711,7 @@ def test_draft_inventory_can_be_edited_before_validation():
 
 
 def test_validated_inventory_cannot_be_edited_or_deleted():
-    user, store, category = create_store_setup()
+    user, store, category = create_store_setup(is_global_stock=True)
     balance = create_balance(
         store, category, "INV-LOCK", "Article inventaire verrouille", "8.000", "1.000"
     )

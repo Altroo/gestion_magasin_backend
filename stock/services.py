@@ -126,7 +126,7 @@ def validate_stock_transfer(*, transfer: StockTransfer, user=None, source_store=
         raise ValidationError({"target_store": ["Le magasin destination doit être un magasin de vente."]})
     if not transfer.lines.exists():
         raise ValidationError({"lines": ["Le transfert doit contenir au moins une ligne."]})
-    source_store = source_store or Store.objects.filter(is_global_stock=True, is_active=True).first()
+    source_store = source_store or Store.objects.filter(code="mbr-south", is_global_stock=True, is_active=True).first()
     if not source_store:
         raise ValidationError({"store": ["Le stock MBR n'est pas configuré."]})
 
@@ -163,6 +163,8 @@ def validate_stock_transfer(*, transfer: StockTransfer, user=None, source_store=
 
 @transaction.atomic
 def receive_purchase(*, purchase: Purchase, user=None) -> Purchase:
+    if purchase.store.code != "mbr-south" or not purchase.store.is_global_stock:
+        raise ValidationError({"store": ["Les achats de stock doivent utiliser MBR SOUTH."]})
     if purchase.status == Purchase.Statuses.RECEIVED:
         raise ValidationError({"status": ["Cet achat est déjà réceptionné."]})
     if purchase.status == Purchase.Statuses.CANCELLED:
@@ -192,6 +194,8 @@ def receive_purchase(*, purchase: Purchase, user=None) -> Purchase:
 
 @transaction.atomic
 def validate_inventory_session(*, session: InventorySession, user=None) -> InventorySession:
+    if session.store.code != "mbr-south" or not session.store.is_global_stock:
+        raise ValidationError({"store": ["L'inventaire de stock doit utiliser MBR SOUTH."]})
     if session.status == InventorySession.Statuses.VALIDATED:
         raise ValidationError({"status": ["Cet inventaire est déjà validé."]})
     if session.status == InventorySession.Statuses.CANCELLED:

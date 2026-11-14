@@ -28,12 +28,13 @@ from sales.serializers import (
 from sales.services import create_sale, void_sale
 from sales.pdf import build_sale_facture_pdf
 from stock.models import StockBalance
-from store.models import Store
+from store.models import Role, Store
 from store.permissions import (
     MANAGEMENT_ROLES,
     WRITE_ROLES,
     get_store_from_request,
     user_has_store_access,
+    user_has_store_role,
     user_store_ids,
 )
 
@@ -75,10 +76,13 @@ def _ensure_promotion_create_permission(user):
     raise PermissionDenied("Vous n'avez pas les droits pour créer une promotion.")
 
 
-def _ensure_wholesale_sale_permission(user, sale_type):
+def _ensure_wholesale_sale_permission(user, sale_type, store):
     if sale_type != Sale.Types.WHOLESALE:
         return
-    if user.is_staff or getattr(user, "can_wholesale_sale", False):
+    if user.is_staff or (
+        getattr(user, "can_wholesale_sale", False)
+        and user_has_store_role(user, store.pk, Role.Codes.DIRECTION)
+    ):
         return
     raise PermissionDenied("Vous n'avez pas les droits pour faire une vente en gros.")
 
@@ -600,6 +604,7 @@ class SaleListCreateView(APIView):
         _ensure_wholesale_sale_permission(
             request.user,
             serializer.validated_data.get("sale_type"),
+            store,
         )
         sale = create_sale(
             store=store, user=request.user, validated_data=serializer.validated_data
@@ -619,6 +624,7 @@ class SaleDetailEditDeleteView(APIView):
     def put(self, request, pk, *args, **kwargs):
         sale = _get_sale_for_user(request, pk)
         _ensure_store_management_access(request.user, sale.store_id)
+        _ensure_wholesale_sale_permission(request.user, sale.sale_type, sale.store)
         serializer = SaleSerializer(sale, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -627,6 +633,7 @@ class SaleDetailEditDeleteView(APIView):
     def patch(self, request, pk, *args, **kwargs):
         sale = _get_sale_for_user(request, pk)
         _ensure_store_management_access(request.user, sale.store_id)
+        _ensure_wholesale_sale_permission(request.user, sale.sale_type, sale.store)
         serializer = SaleSerializer(sale, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -635,6 +642,7 @@ class SaleDetailEditDeleteView(APIView):
     def delete(self, request, pk, *args, **kwargs):
         sale = _get_sale_for_user(request, pk)
         _ensure_store_management_access(request.user, sale.store_id)
+        _ensure_wholesale_sale_permission(request.user, sale.sale_type, sale.store)
         sale.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -662,6 +670,7 @@ class SaleSyncOfflineView(APIView):
                 _ensure_wholesale_sale_permission(
                     request.user,
                     serializer.validated_data.get("sale_type"),
+                    store,
                 )
                 sale = create_sale(
                     store=store,
@@ -683,6 +692,7 @@ class SaleVoidView(APIView):
     def post(request, pk, *args, **kwargs):
         sale = _get_sale_for_user(request, pk)
         _ensure_store_management_access(request.user, sale.store_id)
+        _ensure_wholesale_sale_permission(request.user, sale.sale_type, sale.store)
         serializer = SaleVoidSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         sale = void_sale(
@@ -703,6 +713,7 @@ class SaleFacturePdfView(APIView):
             raise ValidationError(
                 {"sale_type": ["Seules les ventes en gros ont une facture."]}
             )
+        _ensure_wholesale_sale_permission(request.user, sale.sale_type, sale.store)
         if not request.user.is_staff and not getattr(request.user, "can_print", False):
             raise PermissionDenied("Vous n'avez pas les droits pour imprimer.")
         language = request.query_params.get("language", "fr")

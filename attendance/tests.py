@@ -162,10 +162,7 @@ def test_normal_store_employee_list_only_returns_no_account_employees_for_that_s
 def test_mbr_south_scope_returns_all_store_employees_and_attendance():
     user, store, employee = create_store_setup()
     role = StoreMembership.objects.get(user=user, store=store).role
-    mbr_south = Store.objects.create(
-        code="mbr-south",
-        name="MBR SOUTH",
-    )
+    mbr_south = Store.objects.get(code="mbr-south")
     StoreMembership.objects.create(user=user, store=mbr_south, role=role)
     mbr_employee = Employee.objects.create(
         store=mbr_south,
@@ -202,10 +199,7 @@ def test_mbr_south_create_uses_selected_employee_store():
     user, store, employee = create_store_setup()
     user.is_staff = True
     user.save(update_fields=["is_staff"])
-    mbr_south = Store.objects.create(
-        code="mbr-south",
-        name="MBR SOUTH",
-    )
+    mbr_south = Store.objects.get(code="mbr-south")
     client = authenticated_client(user)
 
     response = client.post(

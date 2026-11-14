@@ -121,12 +121,45 @@ def test_wholesale_sale_requires_user_permission():
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
+def test_wholesale_flag_without_direction_role_is_denied():
+    user = create_user("wholesale-vendeur@example.com")
+    user.can_wholesale_sale = True
+    user.save(update_fields=["can_wholesale_sale"])
+    store, product = create_store_setup(user)
+    central = Store.objects.get(code="mbr-south")
+    central_balance = StockBalance.objects.create(
+        store=central, product=product, quantity=Decimal("5.000")
+    )
+
+    payload = {
+        "store": store.pk,
+        "sale_type": Sale.Types.WHOLESALE,
+        "lines": [{"product": product.pk, "quantity": "1"}],
+    }
+    client = authenticated_client(user)
+    assert client.post("/api/sales/", payload, format="json").status_code == 403
+    offline = client.post(
+        "/api/sales/sync-offline/", {"store": store.pk, "sales": [payload]}, format="json"
+    )
+    assert offline.status_code == 200
+    assert len(offline.data["errors"]) == 1
+    assert Sale.objects.count() == 0
+    central_balance.refresh_from_db()
+    assert central_balance.quantity == Decimal("5.000")
+
+
 def test_wholesale_sale_uses_wholesale_price_and_prints_facture_pdf():
     user = create_user("wholesale-allowed@example.com")
     user.can_wholesale_sale = True
     user.can_print = True
     user.save(update_fields=["can_wholesale_sale", "can_print"])
     store, product = create_store_setup(user)
+    direction = Role.objects.get(code=Role.Codes.DIRECTION)
+    StoreMembership.objects.filter(user=user, store=store).update(role=direction)
+    central = Store.objects.get(code="mbr-south")
+    central_balance = StockBalance.objects.create(
+        store=central, product=product, quantity=Decimal("5.000")
+    )
     product.wholesale_price = Decimal("17.00")
     product.save(update_fields=["wholesale_price"])
     client = authenticated_client(user)
@@ -146,12 +179,22 @@ def test_wholesale_sale_uses_wholesale_price_and_prints_facture_pdf():
     assert response.status_code == status.HTTP_201_CREATED, response.data
     sale = Sale.objects.get(id=response.data["id"])
     assert sale.sale_type == Sale.Types.WHOLESALE
+    assert sale.store_id == store.pk
+    assert sale.stock_store_id == central.pk
     assert sale.total == Decimal("17.00")
+    central_balance.refresh_from_db()
+    assert central_balance.quantity == Decimal("4.000")
+    assert StockBalance.objects.get(store=store, product=product).quantity == Decimal("3.000")
 
     pdf_response = client.get(f"/api/sales/{sale.pk}/facture/")
     assert pdf_response.status_code == status.HTTP_200_OK
     assert pdf_response["Content-Type"] == "application/pdf"
     assert pdf_response.content.startswith(b"%PDF")
+
+    void_response = client.post(f"/api/sales/{sale.pk}/void/", {"reason": "Test"}, format="json")
+    assert void_response.status_code == status.HTTP_200_OK
+    central_balance.refresh_from_db()
+    assert central_balance.quantity == Decimal("5.000")
 
 
 def test_confirm_promotion_sale_reduces_component_stock():
