@@ -12,3 +12,7 @@ CHAT_AI_ASSISTANT_ENABLED=True
 CHAT_AI_MODEL_URL='http://127.0.0.1:9/v1'
 CHAT_AI_MODEL_ID='isolated-test-no-inference'
 CHAT_AI_MODEL_TIMEOUT=2
+
+if os.environ.get("RELEASE_TEST_PG_SOCKET"):
+    DATABASES["default"].update(HOST=os.environ["RELEASE_TEST_PG_SOCKET"],PORT="55447",NAME="postgres")
+AI_PDF_TRANSLATION_ENABLED=False

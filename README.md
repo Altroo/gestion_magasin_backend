@@ -81,3 +81,9 @@ python -m pytest --cov
 ## Portfolio Note
 
 The repository is public for portfolio review. Screenshots are redacted, and sensitive production values are intentionally hidden.
+
+
+### Saved PDF text and Groq writing (2.10.1)
+The signed private gateway selects Groq for `gestion_magasin`. Credentials remain only in its private environment. Product names, promotions, category and expense labels and inventory titles are queued on save, without model calls on the save path. Invoices and reporting PDFs use validated stored French/English translations; static application labels are explicitly translated and require no model. Values, references, identities, line breaks and lists remain intact. Missing text is prepared asynchronously; pending/quota responses never return a mixed-language PDF.
+
+Run `python manage.py translate_pdf_content` once to queue historical sources and use `--status` to monitor progress. The dedicated `pdf-beat` service drains the durable queue each minute without activating unrelated notifications. The worker uses the existing private gateway network. Frontend PDF actions share bounded polling and loading feedback; a quota wait is informational. Existing unrelated chat AI flags stay disabled.

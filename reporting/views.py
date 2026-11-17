@@ -9,7 +9,10 @@ from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
-from ai_assistant.client import AiAssistantClient
+from ai_assistant.pdf_sources import NAMESPACE, specifications
+from ai_assistant.pdf_translation import load_pdf_translations
+from ai_assistant.pdf_text import escaped_pdf_text
+from .pdf_labels import EN_LABELS
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -647,11 +650,11 @@ def _format_pdf_value(value):
     if hasattr(value, "strftime"):
         return value.strftime("%d/%m/%Y")
     text = str(value)
-    return STATUS_LABELS.get(text, text) or "-"
+    return text or "-"
 
 
 def _pdf_text(value):
-    return escape(str(value), {"'": "&apos;", '"': "&quot;"})
+    return escaped_pdf_text(value)
 
 
 def _summary_total(headers, rows):
@@ -749,71 +752,15 @@ def _pdf_response(kind, headers, rows, request):
     language = request.query_params.get("language", "fr")
     if language not in ("fr", "en"):
         raise ValidationError({"language": "Langue non prise en charge."})
-    prose_columns = [
-        index
-        for index, header in enumerate(headers)
-        if any(
-            word in header.lower()
-            for word in (
-                "article",
-                "produit",
-                "libelle",
-                "libellé",
-                "categorie",
-                "catégorie",
-                "statut",
-                "type",
-                "promotion",
-                "description",
-            )
-        )
-    ]
-    labels = (
-        list(REPORT_TITLES.values())
-        + list(STATUS_LABELS.values())
-        + list(headers)
-        + [
-            "Période",
-            "Magasin",
-            "Lignes",
-            "Généré le",
-            "Détail du rapport",
-            "Aucune donnée disponible pour cette période.",
-            "Affichage limité aux 500 premières lignes.",
-            "Tous les magasins",
-            "Magasin sélectionné",
-        ]
-    )
-    texts = labels + [
-        _format_pdf_value(row[index])
-        for row in rows[:500]
-        for index in prose_columns
-        if index < len(row) and isinstance(row[index], str)
-    ]
-    protected = list(
-        dict.fromkeys(
-            str(row[index])
-            for row in rows[:500]
-            for index, header in enumerate(headers)
-            if index < len(row)
-            and any(
-                word in header.lower()
-                for word in ("magasin", "client", "employe", "employé", "fournisseur")
-            )
-            and row[index]
-        )
-    )
-    translations = (
-        AiAssistantClient().translate_many(
-            texts,
-            target_language=language,
-            protected_terms=[term for term in protected if len(term) <= 200][:100],
-            context="stock_report_pdf",
-        )
-        if getattr(settings, "AI_PDF_TRANSLATION_ENABLED", False)
-        else {}
-    )
-    tx = lambda value: translations.get(value, value)
+    # These columns contain prose; identity columns and monetary values are never translated.
+    prose_columns = [index for index, header in enumerate(headers)
+                     if header in {"Article", "Produit", "Libelle", "Libellé", "Famille", "Poste", "Titre", "Nom", "Description", "Promotion"}]
+    texts = [_format_pdf_value(row[index]) for row in rows[:500]
+             for index in prose_columns if index < len(row) and isinstance(row[index], str)]
+    translations = dict(EN_LABELS) if language == "en" else {}
+    if getattr(settings, "AI_PDF_TRANSLATION_ENABLED", False):
+        translations.update(load_pdf_translations(NAMESPACE, specifications(texts), language))
+    tx = lambda value: translations.get(value, EN_LABELS.get(value, value) if language == "en" else value)
     buffer = BytesIO()
     page_size = landscape(A4)
     title = tx(REPORT_TITLES.get(kind, f"Rapport {kind}"))
@@ -948,29 +895,18 @@ def _pdf_response(kind, headers, rows, request):
         )
     )
 
-    table_rows = [
-        [
-            Paragraph(f"<b>{_pdf_text(tx(header))}</b>", styles["ReportHeaderCell"])
-            for header in headers
-        ]
-    ]
+    def cell_text(row, index):
+        value = _format_pdf_value(row[index] if index < len(row) else "")
+        if headers[index] in {"Statut", "Statut paiement", "Type"}:
+            return tx(STATUS_LABELS.get(value, value))
+        return tx(value) if index in prose_columns else value
+
+    table_rows = [[Paragraph(f"<b>{_pdf_text(tx(header))}</b>", styles["ReportHeaderCell"]) for header in headers]]
     if rows:
         for row in rows[:500]:
-            table_rows.append(
-                [
-                    Paragraph(
-                        _pdf_text(
-                            tx(_format_pdf_value(row[index]))
-                            if index in prose_columns and index < len(row)
-                            else _format_pdf_value(
-                                row[index] if index < len(row) else ""
-                            )
-                        ),
-                        styles["ReportCell"],
-                    )
-                    for index, _header in enumerate(headers)
-                ]
-            )
+            table_rows.append([Paragraph(_pdf_text(cell_text(row, index)), styles["ReportCell"])
+                               for index, _header in enumerate(headers)])
+
     else:
         table_rows.append(
             [

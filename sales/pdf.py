@@ -3,7 +3,9 @@ from io import BytesIO
 
 from django.http import HttpResponse
 from django.conf import settings
-from ai_assistant.client import AiAssistantClient
+from ai_assistant.pdf_sources import NAMESPACE, specifications
+from ai_assistant.pdf_translation import load_pdf_translations
+from ai_assistant.pdf_text import escaped_pdf_text
 from django.utils.html import escape
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
@@ -216,7 +218,7 @@ def _lines_table(sale, styles, content_width, tx=lambda value: value):
     data = [[Paragraph(f"<b>{item}</b>", styles["SmallCenter"]) for item in headers]]
 
     for line in sale.lines.select_related("product").all():
-        designation = escape(tx(line.product.name))
+        designation = escaped_pdf_text(tx(line.product.name))
         if line.product.reference:
             designation = f"<b>{escape(line.product.reference)}</b><br/>{designation}"
         data.append(
@@ -235,7 +237,7 @@ def _lines_table(sale, styles, content_width, tx=lambda value: value):
         data.append(
             [
                 Paragraph(
-                    f"<b>Promotion</b><br/>{escape(tx(line.promotion.name))}",
+                    f"<b>Promotion</b><br/>{escaped_pdf_text(tx(line.promotion.name))}",
                     styles["Small"],
                 ),
                 Paragraph(_format_number(line.quantity, 3), styles["SmallCenter"]),
@@ -354,19 +356,7 @@ def build_sale_facture_pdf(sale, language="fr"):
             line.promotion.name
             for line in sale.promotion_lines.select_related("promotion")
         ]
-        protected = [sale.store.name] + [
-            product.reference for product in products if product.reference
-        ]
-        if sale.customer:
-            protected.append(sale.customer.full_name)
-        translations.update(
-            AiAssistantClient().translate_many(
-                texts,
-                target_language=language,
-                protected_terms=protected[:100],
-                context="sale_pdf",
-            )
-        )
+        translations.update(load_pdf_translations(NAMESPACE, specifications(texts), language))
     tx = lambda value: translations.get(value, value)
     if language == "en":
         from num2words import num2words

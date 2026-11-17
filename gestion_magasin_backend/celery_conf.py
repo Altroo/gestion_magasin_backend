@@ -19,6 +19,7 @@ from celery.schedules import crontab
 app.autodiscover_tasks(
     packages=[
         "account.tasks",
+        "ai_assistant.tasks",
         "notification.tasks",
     ]
 )
