@@ -110,8 +110,13 @@ def ensure_sources(
 def load_pdf_translations(namespace, specs, language):
     from .exceptions import PdfTranslationPending, PdfTranslationFailed
 
+    originals = {}
+    if language == "fr":
+        from .french_pdf import split_french_sources
+
+        originals, specs = split_french_sources(specs)
     if not specs:
-        return {}
+        return originals
     rows = {
         row.fingerprint: row
         for row in PdfTextTranslation.objects.filter(
@@ -165,7 +170,7 @@ def load_pdf_translations(namespace, specs, language):
 
                 raise PdfTranslationDeferred(wait=max(1, min(waits)))
         raise PdfTranslationPending()
-    return {spec.text: rows[spec.fingerprint].translated_text for spec in specs}
+    return originals | {spec.text: rows[spec.fingerprint].translated_text for spec in specs}
 
 
 def translation_enabled():

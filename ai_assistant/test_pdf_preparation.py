@@ -220,3 +220,12 @@ def test_pdf_scheduler_leaves_notification_schedule_unchanged():
     assert app is not main
     assert set(app.conf.beat_schedule)=={"prepare-pending-pdf-translations"}
     assert dict(main.conf.beat_schedule)==before
+
+
+
+def test_french_pdf_uses_original_source_before_reading_translation_rows():
+    value = "Location STORE N° 42"
+    with patch.object(PdfTextTranslation.objects, "filter") as lookup:
+        assert load_pdf_translations("casa_di_lusso", [source(value)], "fr") == {value: value}
+
+    lookup.assert_not_called()
