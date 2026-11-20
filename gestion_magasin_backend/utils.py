@@ -17,10 +17,10 @@ GaussianBlur: Any = cv2.GaussianBlur
 
 from django.core.files.base import ContentFile
 from django.db.models import ProtectedError
-from django.utils.translation import ngettext
+from django.utils.translation import gettext
 from numpy import uint8, frombuffer
 from rest_framework import serializers, status
-from rest_framework.exceptions import Throttled
+from rest_framework.exceptions import ErrorDetail, Throttled
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
@@ -250,14 +250,20 @@ def api_exception_handler(exc, context):
         }
         return Response(error_payload, status=status.HTTP_409_CONFLICT)
 
-    # Translate DRF throttle message to French before handling
     if isinstance(exc, Throttled):
-        wait = int(exc.wait) if exc.wait else 0
-        exc.detail = ngettext(
-            "Requête ralentie. Réessayez dans %(wait)d seconde.",
-            "Requête ralentie. Réessayez dans %(wait)d secondes.",
-            wait,
-        ) % {"wait": wait}
+        message = gettext("Requête ralentie. Réessayez plus tard.")
+        if exc.wait:
+            hours, remainder = divmod(exc.wait, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            duration = " ".join(
+                f"{value} {unit}"
+                for value, unit in ((hours, "h"), (minutes, "min"), (seconds, "s"))
+                if value
+            )
+            message = gettext("Requête ralentie. Réessayez dans %(duration)s.") % {
+                "duration": duration,
+            }
+        exc.detail = ErrorDetail(message, code=exc.default_code)
 
     response = exception_handler(exc, context)
 
@@ -279,12 +285,11 @@ def api_exception_handler(exc, context):
             },
         }
 
-        error_payload = {
+        response.data = {
             "status_code": response.status_code,
             "message": http_code_to_message.get(response.status_code, ""),
             "details": response.data,
         }
-        return Response(error_payload, status=response.status_code)
 
     return response
 

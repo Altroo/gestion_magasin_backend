@@ -107,10 +107,23 @@ def test_quota_deferred_pdf_does_not_wait_for_sync_translation():
     spec = source("Livrer avant midi")
     ensure_sources("casa_di_lusso", [spec], ["en"], priority=0, dispatch=False)
     PdfTextTranslation.objects.update(
-        last_error="ai_rate_limited", available_at=timezone.now() - timedelta(seconds=1)
+        last_error="ai_gateway_throttled", available_at=timezone.now() + timedelta(seconds=60)
     )
     with pytest.raises(PdfTranslationDeferred):
         load_pdf_translations("casa_di_lusso", [spec], "en")
+
+
+def test_worker_recovers_legacy_quota_wait():
+    spec = source("Livrer avant midi")
+    ensure_sources("casa_di_lusso", [spec], ["en"], priority=0, dispatch=False)
+    postponed = timezone.now() + timedelta(hours=6)
+    PdfTextTranslation.objects.update(last_error="ai_rate_limited", available_at=postponed)
+    cache.set("pdf-translation-quota:foreground", postponed.timestamp(), 21600)
+    with patch.object(
+        AiAssistantClient, "translate_many", return_value={spec.text: "Deliver before noon"}
+    ):
+        translate_pending_pdf_texts()
+    assert load_pdf_translations("casa_di_lusso", [spec], "en") == {spec.text: "Deliver before noon"}
 
 
 

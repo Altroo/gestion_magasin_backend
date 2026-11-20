@@ -141,11 +141,12 @@ def translate_pending_pdf_texts():
 
 
 def eligible_work(now):
-    eligible = Q(status="pending", available_at__lte=now) | Q(
-        status="processing", lease_until__lt=now
+    eligible = (
+        Q(status="pending", available_at__lte=now)
+        | Q(status="pending", last_error="ai_rate_limited")
+        | Q(status="processing", lease_until__lt=now)
     )
-    # Skip the whole tier without rewriting the deadline for every queued batch.
-    # Retrying locally must never extend a gateway-imposed wait.
+    # The gateway handles Groq quota internally. Only its own request limit pauses work.
     if cache.get(quota_key(100), 0) > now.timestamp():
         eligible &= ~Q(priority__gte=100)
     if cache.get(quota_key(0), 0) > now.timestamp():
@@ -154,7 +155,7 @@ def eligible_work(now):
 
 
 def quota_key(priority):
-    return "pdf-translation-quota:" + (
+    return "pdf-translation-gateway-quota:" + (
         "background" if priority >= 100 else "foreground"
     )
 
@@ -174,7 +175,7 @@ def record_failure(row, token, exc):
             + timedelta(seconds=max(1, float(exc.wait or 60))),
             lease_until=None,
             lease_token=None,
-            last_error="ai_rate_limited",
+            last_error="ai_gateway_throttled",
             updated_at=timezone.now(),
         )
         return
